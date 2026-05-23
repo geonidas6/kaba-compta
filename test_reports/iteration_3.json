@@ -1,0 +1,43 @@
+{
+  "summary": "Iteration-3 backend testing for Fazgom Togo new features: impersonation, audit middleware, /admin/users/{id}/full, configurable platform settings (commission_enabled, premium_price_fcfa, premium_duration_days), public /public/config, mission commission flow under both toggles, premium subscribe pricing. 20/22 new tests PASS. 2 FAIL exposing a CRITICAL middleware bug: every impersonated mutating request (POST/PUT/PATCH/DELETE) returns 503 to the client even though backend handler completes and audit log is correctly written (verified via direct Mongo query: method=POST, path=/api/cash/entries, status_code=200, body_preview contains the JSON; KYC upload audit has body_preview='<file upload 340 bytes>'). All non-impersonation features (RBAC, GET filtering, full user endpoint, platform settings, commission math 0% vs 10%, premium price/duration, /public/config masking commission_pct to 0 when disabled) work correctly. Platform settings reset to defaults at end (commission_enabled=true, commission_pct=7, premium_price_fcfa=2000, premium_duration_days=30).",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "audit_impersonation_middleware @ /app/backend/server.py:1441",
+        "issue": "Every impersonated mutating request returns 503 to the client. Backend handler runs successfully and audit log row is inserted, but the response is dropped because `request._receive = receive` (body-buffering trick) combined with FastAPI's @app.middleware('http') (BaseHTTPMiddleware) breaks Starlette's listen_for_disconnect → raises 'RuntimeError: Unexpected message received: http.request'. Ingress then returns 503 'upstream connect error / connection termination'. Reproduces 100% on POST /api/cash/entries and POST /api/kyc/upload while using an impersonation JWT (imp claim set). Non-impersonated POSTs work fine because the middleware returns early before body buffering.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_audit_impersonation.py",
+    "/app/test_reports/pytest/audit_impersonation.xml"
+  ],
+  "action_items": [
+    "Rewrite `audit_impersonation_middleware` as a pure ASGI middleware (`async def __call__(self, scope, receive, send)`) registered via `app.add_middleware(...)`, NOT `@app.middleware('http')` (BaseHTTPMiddleware). In pure ASGI form you can buffer the first http.request message yourself and forward it to the inner app, while keeping listen_for_disconnect functional. Reference pattern: read all http.request messages until more_body=False, then create a new receive() that yields the buffered body once then forwards subsequent disconnect messages from the original receive. This is the only way to use response.body_iterator inspection AND keep StreamingResponse working under Starlette.",
+    "Alternative quick-fix: drop the middleware entirely and add audit logging via a FastAPI dependency injected on a small whitelist of mutating endpoints (cash, kyc, premium, missions, payments) – avoids the BaseHTTPMiddleware body issue."
+  ],
+  "critical_code_review_comments": [
+    "server.py now ~1505 lines – the split into routers/ recommended in iter-2 is overdue.",
+    "audit_impersonation_middleware writes audit logs AFTER call_next without awaiting if `response.status_code < 400` – but for impersonated multipart uploads the response stream may already be in-flight, so the audit insertion can race with the response. Fine for current single-worker setup but flag for production.",
+    "PlatformSettingsUpdate allows commission_pct without bounds – consider `Field(ge=0, le=100)` to prevent admin from saving negative or >100 commission.",
+    "/api/admin/users/{id}/full uses two queries on db.users twice (once at top and indirectly via stats). Acceptable for now; consider aggregating in a single $facet pipeline for performance at scale.",
+    "audit_logs collection has no index on (admin_id, created_at) or (actor_user_id, created_at) – the /admin/audit-logs and /admin/users/{id}/full endpoints sort & filter on these. Add indexes before production traffic grows.",
+    "admin_audit_logs enrichment loops through users one-by-one logic is fine but lg['actor_role'] is set only if a user was found; consider also adding lg['actor_role']=None default for consistency.",
+    "Impersonation token has 2-hour lifetime and no revocation list. Acceptable for MVP but document for security."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_audit_impersonation.py",
+    "/app/backend/server.py (minor: documented one-shot receive that does NOT actually fix the 503; left a TODO comment pointing to pure-ASGI rewrite)"
+  ],
+  "success_rate": {"backend": "91% (20/22 new tests; combined with prior iterations: 78/80)", "frontend": "n/a (not requested)"},
+  "test_credentials": "Admin: +22890000000 / admin1234 (seeded). Per-run ephemeral merchant 9{TAG}31 and assistant 9{TAG}41, password TestPass123!.",
+  "seed_data_creation": "Per-run: 1 merchant, 1 assistant, several cash entries (via impersonation and normal), 1 KYC doc, 2 missions (paid + completed under each commission setting). Platform settings reset to defaults at TestZCleanup.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "main_agent_can_self_test": false,
+  "context_for_next_testing_agent": "Run: pytest /app/backend/tests/ -v. The 2 failing tests in test_audit_impersonation.py (test_impersonated_post_creates_audit_log, test_kyc_multipart_upload_body_preview) are NOT test-script issues – they capture a real 503 bug introduced by audit_impersonation_middleware. Verify the fix by checking the test assertions pass: r.status_code == 200 for impersonated POST /api/cash/entries and POST /api/kyc/upload. Even with current bug, db.audit_logs collection IS being populated correctly (verified directly via motor query: body_preview contains JSON for cash, '<file upload N bytes>' for multipart). Backend logs show 200 OK before the response transmission fails. After main agent rewrites the middleware as pure ASGI, all 22 tests should pass.",
+  "rca of the issue": "FastAPI @app.middleware('http') wraps the function in starlette.middleware.base.BaseHTTPMiddleware. BHM installs its own wrapped_receive that tracks _response_started and raises RuntimeError if it sees a second 'http.request' message after the response begins streaming. The audit middleware sets `request._receive` to a callable that returns the buffered body; this works for `await request.body()` and downstream handlers, but Starlette's StreamingResponse/JSONResponse also calls receive() inside listen_for_disconnect AFTER the response headers are sent — and at that point BHM's wrapped_receive expects only http.disconnect, never http.request. Even a one-shot receive that returns http.disconnect on second call does not help, because listen_for_disconnect is wired to a different receive callable inside BaseHTTPMiddleware's task group, not the request._receive we overrode. Reproduction: any POST /api/cash/entries with an impersonation JWT → backend logs 200 OK → uvicorn raises RuntimeError → ingress returns 503. Mitigation: rewrite as pure ASGI middleware that intercepts and re-emits the original http.request messages itself (so the buffered body is fed through the canonical receive pipeline), or move audit logging to a FastAPI dependency."
+}

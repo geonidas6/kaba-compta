@@ -1,0 +1,44 @@
+services:
+
+  # ─────────────────────────────────────────────
+  # MongoDB — Local Database
+  # ─────────────────────────────────────────────
+  mongodb:
+    image: mongo:latest
+    container_name: fazgom_db_local
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-adminpassword}
+    volumes:
+      - mongodb_local_data:/data/db
+    networks:
+      - fazgom-network
+
+
+  # ─────────────────────────────────────────────
+  # Mongo-Express — Local Database Manager
+  # ─────────────────────────────────────────────
+  mongoexpress:
+    image: mongo-express:latest
+    container_name: fazgom_mongoexpress_local
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: ${MONGO_USER:-admin}
+      ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGO_PASSWORD:-adminpassword}
+      ME_CONFIG_MONGODB_SERVER: mongodb
+      ME_CONFIG_BASICAUTH_USERNAME: ${MONGO_USER:-admin}
+      ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_PASSWORD:-adminpassword}
+    depends_on:
+      - mongodb
+    networks:
+      - fazgom-network
+
+networks:
+  fazgom-network:
+    driver: bridge
+
+volumes:
+  mongodb_local_data:

@@ -1,0 +1,132 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Work+Sans:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-background: #FAF8F5;
+  --color-foreground: #2D2D2D;
+  --color-card: #FDFCFB;
+  --color-card-foreground: #2D2D2D;
+  --color-popover: #FFFFFF;
+  --color-popover-foreground: #2D2D2D;
+  --color-primary: #C84B31;
+  --color-primary-foreground: #FFFFFF;
+  --color-secondary: #1F4E3D;
+  --color-secondary-foreground: #FFFFFF;
+  --color-muted: #FAF8F5;
+  --color-muted-foreground: #6C6C6C;
+  --color-accent: #ECA869;
+  --color-accent-foreground: #2D2D2D;
+  --color-destructive: #D32F2F;
+  --color-destructive-foreground: #FFFFFF;
+  --color-border: #EAE5D9;
+  --color-input: #EAE5D9;
+  --color-ring: #C84B31;
+}
+
+:root {
+  --bg: #FAF8F5;
+  --surface: #FDFCFB;
+  --primary: #C84B31;
+  --primary-hover: #A83E28;
+  --secondary: #1F4E3D;
+  --accent: #ECA869;
+  --text-main: #2D2D2D;
+  --text-muted: #6C6C6C;
+  --border: #EAE5D9;
+  --success: #1F4E3D;
+  --danger: #D32F2F;
+
+  --background: 36 33% 97%;
+  --foreground: 0 0% 18%;
+  --card: 30 30% 99%;
+  --card-foreground: 0 0% 18%;
+  --popover: 30 30% 99%;
+  --popover-foreground: 0 0% 18%;
+  --primary-hsl: 11 60% 49%;
+  --primary-foreground: 30 30% 99%;
+  --secondary-hsl: 153 43% 21%;
+  --secondary-foreground: 30 30% 99%;
+  --muted: 38 28% 92%;
+  --muted-foreground: 0 0% 42%;
+  --accent-hsl: 27 76% 67%;
+  --accent-foreground: 0 0% 18%;
+  --destructive: 0 65% 50%;
+  --destructive-foreground: 0 0% 98%;
+  --border-hsl: 38 28% 88%;
+  --input: 38 28% 88%;
+  --ring: 11 60% 49%;
+  --chart-1: 11 60% 49%;
+  --chart-2: 153 43% 21%;
+  --chart-3: 27 76% 67%;
+  --chart-4: 43 74% 66%;
+  --chart-5: 197 37% 24%;
+  --radius: 0.75rem;
+}
+
+body {
+  margin: 0;
+  font-family: 'Work Sans', system-ui, -apple-system, sans-serif;
+  background-color: var(--bg);
+  color: var(--text-main);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-weight: 500;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Manrope', system-ui, sans-serif;
+  color: var(--text-main);
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
+}
+
+/* Mobile tweaks */
+input, textarea, select {
+  font-size: 16px; /* prevents zoom on iOS */
+}
+
+/* Bottom-nav safe area */
+.safe-bottom {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+}
+
+/* Subtle warm texture overlay for hero */
+.hero-texture {
+  background-color: #FAF8F5;
+  background-image:
+    radial-gradient(at 10% 10%, rgba(236, 168, 105, 0.18) 0px, transparent 50%),
+    radial-gradient(at 90% 80%, rgba(31, 78, 61, 0.10) 0px, transparent 50%),
+    radial-gradient(at 50% 0%, rgba(200, 75, 49, 0.10) 0px, transparent 50%);
+}
+
+.card-flat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.875rem;
+}
+
+.btn-primary {
+  background-color: var(--primary);
+  color: #fff;
+}
+.btn-primary:hover { background-color: var(--primary-hover); }
+
+.brand-gradient-text {
+  background: linear-gradient(90deg, #C84B31 0%, #1F4E3D 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Chat bubble */
+.bubble-self {
+  background: #DCF3E6;
+  border-radius: 1rem 1rem 0.25rem 1rem;
+}
+.bubble-other {
+  background: #FDFCFB;
+  border: 1px solid var(--border);
+  border-radius: 1rem 1rem 1rem 0.25rem;
+}

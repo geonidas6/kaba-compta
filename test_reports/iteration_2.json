@@ -1,0 +1,41 @@
+{
+  "summary": "Backend-only admin panel + FedaPay settings + webhook testing for Fazgom Togo. All 24 admin pytest tests passed (100%). Covered: admin seeding & login (+22890000000/admin1234), admin role-creation rejection on /auth/register, /admin/stats RBAC + full shape, /admin/users role+q search & partial update (banned/is_premium/kyc_status), ban-then-/auth/me returns 403 'Compte suspendu' + unban restores access, /admin/kyc/pending excludes ciphertext/iv/tag/_id, /admin/kyc/{doc_id}/file streams decrypted bytes, /admin/kyc/{user_id}/decision approve/reject + invalid value 400, /admin/missions list + status filter, /admin/payments returns {payments, payouts}, /admin/settings masking + webhook_url derivation, PUT /admin/settings/fedapay persists and toggles api_key_set/webhook_secret_set, PUT /admin/settings/platform updates commission_pct + public_backend_url, POST /payments/init switches to mock:false provider:fedapay once api_key is set, webhook HMAC: invalid sig -> 403, valid sig (t=ts,s=hex with HMAC-SHA256(ts + '.' + body, secret)) -> 200 received:true. Cleanup: fedapay settings reset to empty + admin verified not banned.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_admin.py",
+    "/app/backend/tests/test_fazgom_e2e.py",
+    "/app/test_reports/pytest/admin_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now ~1295 lines - past the 700-line guideline. Strongly recommend splitting into routers/ (auth, kyc, cash, stock, credits, missions, payments, messages, reviews, admin, webhook, settings) before adding more features.",
+    "/api/admin/stats reports kyc_pending_count from db.kyc_documents.count_documents({}) which counts ALL uploaded docs, not 'pending' assistants. Inconsistent with /api/admin/kyc/pending which filters users by kyc_status=='pending'. Recommend counting users with role=assistant + kyc_status=pending for an accurate dashboard metric.",
+    "PUT /api/admin/settings/fedapay accepts empty string '' for api_key/webhook_secret and persists it; get_fedapay_config falls back to env when DB value is empty string (because `s.get('api_key') or env`). Good behaviour but documented nowhere - main agent should note this in admin UI (saving empty string == 'use env fallback').",
+    "Webhook signature parser uses dict(p.split('=', 1)) which silently drops malformed parts; OK but a malicious header like 't=,s=' parses to empty timestamp - currently mitigated by HMAC compare_digest, but worth a sanity length check on sig.",
+    "/api/admin/settings 'webhook_url' is derived but never persisted; if PUBLIC_BACKEND_URL env and DB platform.public_backend_url are both empty, returns ''. Frontend should surface a warning in that case.",
+    "Seed admin on startup OVERWRITES the password hash every restart even if admin exists. Side-effect: a manual admin password change would be reverted by next restart. Consider only overwriting when password differs or skipping update entirely once seeded.",
+    "_verify_fedapay_signature returns False when secret is empty, but webhook endpoint only enforces verification if `secret` is truthy - so if admin clears webhook_secret, webhook accepts unsigned requests. Acceptable for dev/mock but document this clearly for production.",
+    "Admin /api/admin/users does not exclude phone_verified or other private fields; this is admin-only so OK, but be aware all user fields except _id and password_hash are exposed."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_admin.py"
+  ],
+  "success_rate": {
+    "backend": "100% (24/24 admin tests; combined with iteration 1: 58/58)",
+    "frontend": "n/a (not requested)"
+  },
+  "test_credentials": "Admin: +22890000000 / admin1234 (seeded via .env on startup). Ephemeral test users created per run with phones 9{TAG}11 (merchant) and 9{TAG}22 (assistant), password TestPass123!.",
+  "seed_data_creation": "Per-run ephemeral merchant + assistant + 1 KYC doc + 1 mission + 1 application + 1 payment. No cleanup of these (use TEST_ prefix for identification). FedaPay settings RESET to empty at end of test run to avoid contaminating subsequent runs. Admin is verified not-banned at end.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Both backend test suites green: /app/backend/tests/test_fazgom_e2e.py (34 tests, end-to-end non-admin) and /app/backend/tests/test_admin.py (24 tests, admin + webhook + dynamic FedaPay config). Run both via: pytest /app/backend/tests/ -v. Admin user is auto-seeded; do NOT register admin via /auth/register (correctly rejected with 400). When testing webhooks, signature format is 't=<unix_ts>,s=<hex>' where hex = HMAC-SHA256((ts + '.').encode() + raw_body, secret). The TestZCleanup class wipes FedaPay settings at the end - keep ordering (class name starts with Z) if adding more tests. Frontend not yet tested - admin panel UI flows would be next."
+}

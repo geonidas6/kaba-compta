@@ -1,0 +1,28 @@
+{
+  "summary": "Iteration-4 retest after pure-ASGI AuditImpersonationMiddleware rewrite. All 22 audit/admin/settings tests in test_audit_impersonation.py PASS (previously 20/22 with 2 critical 503 failures). Full backend regression: 80/80 tests pass across test_admin.py (23), test_audit_impersonation.py (22), test_fazgom_e2e.py (35). The two previously-failing tests now confirmed green: test_impersonated_post_creates_audit_log (impersonated POST /api/cash/entries returns 200 with audit log containing admin_id, actor_user_id, method=POST, status_code=200 and JSON body_preview) and test_kyc_multipart_upload_body_preview (impersonated multipart POST /api/kyc/upload returns 200 with audit body_preview='<file upload N bytes>'). Non-impersonated POSTs and impersonated GETs correctly do NOT generate audit rows. Platform settings reset to defaults verified via /api/public/config (commission_enabled=true, commission_pct=7, premium_price_fcfa=2000, premium_duration_days=30). The 503 bug is fully resolved.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_audit_impersonation.py",
+    "/app/test_reports/pytest/audit_impersonation_iter4.xml",
+    "/app/test_reports/pytest/all_iter4.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "AuditImpersonationMiddleware (pure ASGI, server.py:1441) implementation is correct: buffers the inbound http.request body, wraps send() to inspect status_code, and forwards the original receive for subsequent http.disconnect events.",
+    "Pre-existing comments from iter-3 still hold (not regressions): server.py is now ~1535 lines and overdue for router split; PlatformSettingsUpdate.commission_pct lacks Field(ge=0,le=100) bounds; audit_logs collection has no index on (admin_id, created_at) / (actor_user_id, created_at) — add before production traffic.",
+    "Impersonation JWT still has 2h lifetime with no revocation list — acceptable for MVP, document for security."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (80/80, including the 2 previously-failing impersonation tests)", "frontend": "n/a (not requested)"},
+  "test_credentials": "Admin: +22890000000 / admin1234 (seeded). Per-run ephemeral merchant/assistant with password TestPass123!.",
+  "seed_data_creation": "Per-run ephemeral test users + cash/kyc/missions. Platform settings reset to defaults at TestZCleanup, verified via /api/public/config.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "AuditImpersonationMiddleware is now a pure ASGI class (server.py:1441) registered via app.add_middleware(AuditImpersonationMiddleware) at line 1535. The previous BaseHTTPMiddleware version is gone. All 22 audit/admin/settings tests pass. Mocked APIs: FedaPay (payment init) remains mocked. No regressions in admin RBAC, /admin/users/{id}/full, platform settings toggle, premium pricing, /public/config, or mission commission math under either commission_enabled value.",
+  "rca of the issue": "Iter-3 root cause was BaseHTTPMiddleware's wrapped_receive raising RuntimeError when request._receive returned an http.request after the response started, leading uvicorn to drop the connection (ingress 503). The fix replaces it with a pure ASGI class that buffers all http.request messages BEFORE invoking the inner app and constructs a fresh receive() that yields the buffered body once then passes through to the original receive for disconnect events. This keeps listen_for_disconnect functional and avoids the BHM RuntimeError. Confirmed by retest: 22/22 audit tests pass, including impersonated POST /api/cash/entries → 200 and impersonated POST /api/kyc/upload (multipart) → 200, both with correct audit log rows."
+}
