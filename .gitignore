@@ -114,4 +114,6 @@ credentials.json
 ENV_EXAMPLE_PROD.md
 ENV_EXAMPLE_LOCAL.md
 !.env.example
-!**/?.env.example
+!**/.env.example
+!backend/.env.example
+!frontend/.env.example
