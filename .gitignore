@@ -117,3 +117,5 @@ ENV_EXAMPLE_LOCAL.md
 !**/.env.example
 !backend/.env.example
 !frontend/.env.example
+
+docker-compose.traefik.yml

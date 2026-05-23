@@ -422,23 +422,51 @@ async def admin_whatsapp_test(data: WhatsAppTestRequest, _: dict = Depends(requi
     if base.endswith("/api"):
         base = base[:-4]
     endpoint = f"{base}/api/sessions/{wa_session}/messages/send-text"
+    payload = {"chatId": wa_phone, "text": body}
+    sent_request = {
+        "method": "POST",
+        "endpoint": endpoint,
+        "headers": {
+            "X-API-Key": f"{wa_key[:8]}...{wa_key[-4:]}" if len(wa_key) > 12 else "********",
+            "Content-Type": "application/json",
+        },
+        "json": payload,
+    }
     try:
         import httpx
         async with httpx.AsyncClient(timeout=15.0, verify=cfg["whatsapp_verify_ssl"]) as hc:
             r = await hc.post(
                 endpoint,
                 headers={"X-API-Key": wa_key, "Content-Type": "application/json"},
-                json={"chatId": wa_phone, "text": body},
+                json=payload,
             )
+        response_text = r.text[:4000]
+        try:
+            response_json = r.json()
+        except Exception:
+            response_json = None
         return {
             "ok": 200 <= r.status_code < 300,
             "status_code": r.status_code,
             "endpoint": endpoint,
             "phone_sent_to": wa_phone,
-            "response": r.text[:1000],
+            "sent": sent_request,
+            "api_response": {
+                "status_code": r.status_code,
+                "headers": dict(r.headers),
+                "json": response_json,
+                "text": response_text,
+            },
+            "response": response_text,
         }
     except Exception as e:
-        return {"ok": False, "error": str(e), "endpoint": endpoint}
+        return {
+            "ok": False,
+            "error": str(e),
+            "endpoint": endpoint,
+            "phone_sent_to": wa_phone,
+            "sent": sent_request,
+        }
 
 @router.get("/whatsapp/status")
 async def admin_whatsapp_status(_: dict = Depends(require_admin)):

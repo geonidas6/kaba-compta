@@ -1,0 +1,75 @@
+version: 1
+kind: fullstack
+
+domains:
+  frontend: ${LANDING_DOMAIN_URL}
+  api: ${DOMAIN_API}
+  db_admin: ${DB_MANAGER_URL}
+
+env_files:
+  - path: .env
+    template: .env.example
+    required_keys:
+      - MONGO_USER
+      - MONGO_PASSWORD
+      - MONGO_DB
+      - LANDING_DOMAIN_URL
+      - DOMAIN_API
+      - DB_MANAGER_URL
+    accept:
+      - MONGO_USER
+      - MONGO_PASSWORD
+      - MONGO_DB
+      - LANDING_DOMAIN_URL
+      - DOMAIN_API
+      - DB_MANAGER_URL
+      - NEXT_PUBLIC_API_URL
+      - REACT_APP_BACKEND_URL
+  - path: backend/.env
+    template: backend/.env.example
+    required_keys:
+      - DB_NAME
+      - JWT_SECRET
+      - KYC_ENCRYPTION_KEY_B64
+      - ADMIN_PHONE
+      - ADMIN_PASSWORD
+    accept:
+      - DB_NAME
+      - JWT_SECRET
+      - JWT_ALGORITHM
+      - JWT_EXPIRE_DAYS
+      - KYC_ENCRYPTION_KEY_B64
+      - ADMIN_PHONE
+      - ADMIN_PASSWORD
+  - path: frontend/.env
+    template: frontend/.env.example
+    required_keys:
+      - NEXT_PUBLIC_API_URL
+    defaults:
+      NEXT_PUBLIC_API_URL: https://${DOMAIN_API}
+      REACT_APP_BACKEND_URL: https://${DOMAIN_API}
+    accept:
+      - NEXT_PUBLIC_API_URL
+      - REACT_APP_BACKEND_URL
+
+services:
+  frontend:
+    public: true
+    domain: frontend
+    port: 3000
+    build_args:
+      NEXT_PUBLIC_API_URL: https://${DOMAIN_API}
+      REACT_APP_BACKEND_URL: https://${DOMAIN_API}
+  api:
+    public: true
+    domain: api
+    port: 8000
+    extra_networks:
+      - backend
+  mongoexpress:
+    public: true
+    domain: db_admin
+    port: 8081
+    type: mongo-express
+    extra_networks:
+      - backend

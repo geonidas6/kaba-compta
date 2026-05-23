@@ -33,6 +33,8 @@ export default function AdminSettings() {
   const [resettingDb, setResettingDb] = useState(false);
   const [restoringFile, setRestoringFile] = useState(false);
 
+  const prettyJson = (value) => JSON.stringify(value ?? null, null, 2);
+
   const loadBackups = async () => {
     setLoadingBackups(true);
     try {
@@ -207,7 +209,18 @@ export default function AdminSettings() {
       if (r.data.ok) toast.success("Message WhatsApp envoyé !");
       else toast.error(`Échec (HTTP ${r.data.status_code || "?"})`);
     } catch (err) {
-      toast.error(err?.response?.data?.detail || "Erreur");
+      const detail = err?.response?.data;
+      const message = detail?.detail || err?.message || "Erreur";
+      setWaResult({
+        ok: false,
+        error: message,
+        api_response: {
+          status_code: err?.response?.status || null,
+          json: detail || null,
+          text: typeof detail === "string" ? detail : message,
+        },
+      });
+      toast.error(message);
     } finally {
       setWaTesting(false);
     }
@@ -423,9 +436,29 @@ export default function AdminSettings() {
                   </Button>
                 </div>
                 {waResult && (
-                  <pre data-testid="wa-test-result" className={`mt-3 text-xs p-2 rounded border max-h-48 overflow-auto ${waResult.ok ? "bg-[#1F4E3D]/10 border-[#1F4E3D]/30 text-[#1F4E3D]" : "bg-[#C84B31]/10 border-[#C84B31]/30 text-[#C84B31]"}`}>
-                    {JSON.stringify(waResult, null, 2)}
-                  </pre>
+                  <div
+                    data-testid="wa-test-result"
+                    className={`mt-3 rounded border overflow-hidden ${waResult.ok ? "bg-[#1F4E3D]/10 border-[#1F4E3D]/30" : "bg-[#C84B31]/10 border-[#C84B31]/30"}`}
+                  >
+                    <div className={`px-3 py-2 text-xs font-bold border-b ${waResult.ok ? "border-[#1F4E3D]/20 text-[#1F4E3D]" : "border-[#C84B31]/20 text-[#C84B31]"}`}>
+                      {waResult.ok ? "Test envoyé" : "Échec du test"}
+                      {waResult.status_code ? ` · HTTP ${waResult.status_code}` : ""}
+                    </div>
+                    <div className="grid md:grid-cols-2 gap-0">
+                      <div className="p-3 border-b md:border-b-0 md:border-r border-black/10">
+                        <div className="font-['Manrope'] font-bold text-xs mb-2 text-[#2E2E2E]">Envoyé à OpenWA</div>
+                        <pre className="text-xs p-2 rounded bg-white/80 border border-black/10 max-h-64 overflow-auto text-[#2E2E2E]">
+                          {prettyJson(waResult.sent || { endpoint: waResult.endpoint, phone_sent_to: waResult.phone_sent_to })}
+                        </pre>
+                      </div>
+                      <div className="p-3">
+                        <div className="font-['Manrope'] font-bold text-xs mb-2 text-[#2E2E2E]">Réponse de l'API</div>
+                        <pre className="text-xs p-2 rounded bg-white/80 border border-black/10 max-h-64 overflow-auto text-[#2E2E2E]">
+                          {prettyJson(waResult.api_response || { error: waResult.error, response: waResult.response })}
+                        </pre>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
             )}

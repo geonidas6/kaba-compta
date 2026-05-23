@@ -1,11 +1,6 @@
 services:
-
-  # ─────────────────────────────────────────────
-  # API FastAPI — Backend Fazgom
-  # ─────────────────────────────────────────────
-  fazgom_api:
+  api:
     build: ./backend
-    container_name: fazgom_api
     restart: always
     dns:
       - 8.8.8.8
@@ -15,28 +10,17 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      - MONGO_URL=mongodb://${MONGO_USER}:${MONGO_PASSWORD}@fazgom_db:27017/${MONGO_DB}?authSource=admin
+      MONGO_URL: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@db:27017/${MONGO_DB}?authSource=admin
+      DB_NAME: ${MONGO_DB}
     depends_on:
-      - fazgom_db
+      - db
     expose:
       - "8000"
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.fazgom_api.rule=Host(`${DOMAIN_API}`)"
-      - "traefik.http.routers.fazgom_api.entrypoints=websecure"
-      - "traefik.http.routers.fazgom_api.tls.certresolver=myresolver"
-      - "traefik.http.services.fazgom_api.loadbalancer.server.port=8000"
-      - "traefik.docker.network=proxy_net"
     networks:
-      - proxy_net
-      - fazgom_backend
+      - backend
 
-  # ─────────────────────────────────────────────
-  # MongoDB — Base de Données
-  # ─────────────────────────────────────────────
-  fazgom_db:
+  db:
     image: mongo:latest
-    container_name: fazgom_db
     restart: always
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
@@ -44,64 +28,45 @@ services:
     volumes:
       - fazgom_mongo_data:/data/db
     networks:
-      - proxy_net
-      - fazgom_backend
+      - backend
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # ─────────────────────────────────────────────
-  # Frontend — React Landing Page & Web App
-  # ─────────────────────────────────────────────
-  fazgom_frontend:
+  frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: fazgom_frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://${DOMAIN_API}}
+        REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL:-https://${DOMAIN_API}}
     restart: always
     env_file:
       - ./frontend/.env
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.fazgom_frontend.rule=Host(`${LANDING_DOMAIN_URL}`)"
-      - "traefik.http.routers.fazgom_frontend.entrypoints=websecure"
-      - "traefik.http.routers.fazgom_frontend.tls.certresolver=myresolver"
-      - "traefik.http.services.fazgom_frontend.loadbalancer.server.port=3000"
-      - "traefik.docker.network=proxy_net"
-    networks:
-      - proxy_net
+    expose:
+      - "3000"
 
-  # ─────────────────────────────────────────────
-  # Mongo-Express — Interface de gestion MongoDB
-  # ─────────────────────────────────────────────
-  fazgom_mongoexpress:
+  mongoexpress:
     image: mongo-express:latest
-    container_name: fazgom_mongoexpress
     restart: always
+    env_file:
+      - .env
     environment:
       ME_CONFIG_MONGODB_ADMINUSERNAME: ${MONGO_USER}
       ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGO_PASSWORD}
-      ME_CONFIG_MONGODB_SERVER: fazgom_db
+      ME_CONFIG_MONGODB_SERVER: db
+      ME_CONFIG_MONGODB_URL: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@db:27017/${MONGO_DB}?authSource=admin
       ME_CONFIG_BASICAUTH_USERNAME: ${MONGO_USER}
       ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_PASSWORD}
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.fazgom_mongoexpress.rule=Host(`${DB_MANAGER_URL}`)"
-      - "traefik.http.routers.fazgom_mongoexpress.entrypoints=websecure"
-      - "traefik.http.routers.fazgom_mongoexpress.tls.certresolver=myresolver"
-      - "traefik.http.services.fazgom_mongoexpress.loadbalancer.server.port=8081"
-      - "traefik.docker.network=proxy_net"
+    expose:
+      - "8081"
     networks:
-      - proxy_net
-      - fazgom_backend
+      - backend
 
 volumes:
   fazgom_mongo_data:
 
 networks:
-  proxy_net:
-    external: true
-  fazgom_backend:
-    name: fazgom_backend
+  backend:
