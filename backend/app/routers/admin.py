@@ -913,3 +913,32 @@ async def admin_generate_fake_data(admin: dict = Depends(require_admin)):
     except Exception as e:
         logger.error(f"[DEV] generate-fake-data failed: {e}")
         raise HTTPException(status_code=500, detail=f"Erreur lors de la génération: {str(e)}")
+
+
+@router.post("/dev/reset-database")
+async def admin_reset_database(admin: dict = Depends(require_admin)):
+    try:
+        # Keep admin users and platform settings, remove business/test data.
+        await db.users.delete_many({"role": {"$ne": "admin"}})
+
+        protected_collections = {"users", "app_settings"}
+        collections = await db.list_collection_names()
+        reset_collections = []
+        for coll_name in collections:
+            if coll_name in protected_collections:
+                continue
+            await db[coll_name].delete_many({})
+            reset_collections.append(coll_name)
+
+        logger.warning(
+            f"[DEV] Database reset by admin={admin['id']} "
+            f"(kept: users[admins], app_settings; cleared: {reset_collections})"
+        )
+        return {
+            "message": "Base réinitialisée avec succès. Les comptes administrateurs et les paramètres plateforme ont été conservés.",
+            "kept": ["admin_users", "app_settings"],
+            "cleared_collections": reset_collections,
+        }
+    except Exception as e:
+        logger.error(f"[DEV] reset-database failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la réinitialisation: {str(e)}")

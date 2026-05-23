@@ -30,6 +30,7 @@ export default function AdminSettings() {
   const [backups, setBackups] = useState([]);
   const [loadingBackups, setLoadingBackups] = useState(false);
   const [generatingFake, setGeneratingFake] = useState(false);
+  const [resettingDb, setResettingDb] = useState(false);
   const [restoringFile, setRestoringFile] = useState(false);
 
   const loadBackups = async () => {
@@ -117,6 +118,23 @@ export default function AdminSettings() {
       toast.error(err?.response?.data?.detail || "Erreur lors de la génération");
     } finally {
       setGeneratingFake(false);
+    }
+  };
+
+  const resetDatabase = async () => {
+    if (!window.confirm("ATTENTION : Cette action supprimera toutes les données métier (utilisateurs non-admin, missions, messages, forum, KYC, logs, etc.) et remettra la base à neuf. Les comptes administrateurs et les paramètres plateforme seront conservés. Continuer ?")) {
+      return;
+    }
+    setResettingDb(true);
+    try {
+      const r = await api.post("/admin/dev/reset-database");
+      toast.success(r.data.message || "Base réinitialisée");
+      await load();
+      await loadBackups();
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Erreur lors de la réinitialisation");
+    } finally {
+      setResettingDb(false);
     }
   };
 
@@ -440,6 +458,15 @@ export default function AdminSettings() {
           className="bg-[#C84B31] hover:bg-[#a63d27] text-white rounded-full"
         >
           {generatingFake ? "Génération en cours..." : "Générer les données de test (Kaba-Compta Lomé)"}
+        </Button>
+        <Button
+          type="button"
+          disabled={resettingDb}
+          onClick={resetDatabase}
+          data-testid="reset-db-btn"
+          className="bg-[#9E2A2B] hover:bg-[#7f1f21] text-white rounded-full"
+        >
+          {resettingDb ? "Réinitialisation en cours..." : "Réinitialiser la base (garder admins)"}
         </Button>
       </div>
 
