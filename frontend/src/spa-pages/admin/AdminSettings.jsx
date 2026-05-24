@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Settings, Link2, Crown, MessageCircle, Send, ShieldOff, Star, Database, Download, Upload, RefreshCw, FlaskConical } from "lucide-react";
+import { Settings, Link2, Crown, MessageCircle, Send, ShieldOff, Star, Database, Download, Upload, RefreshCw, FlaskConical, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -82,6 +82,19 @@ export default function AdminSettings() {
       toast.success(r.data.message || "Restauration effectuée avec succès !");
     } catch (err) {
       toast.error(err?.response?.data?.detail || "Erreur lors de la restauration");
+    }
+  };
+
+  const deleteBackup = async (filename) => {
+    if (!window.confirm(`Supprimer définitivement la sauvegarde "${filename}" ?`)) {
+      return;
+    }
+    try {
+      await api.delete(`/admin/backup/${filename}`);
+      toast.success("Sauvegarde supprimée");
+      loadBackups();
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Erreur lors de la suppression");
     }
   };
 
@@ -177,11 +190,23 @@ export default function AdminSettings() {
     e.preventDefault();
     setSaving(true);
     try {
+      const whatsappServiceUrl = pf.whatsapp_service_url.trim();
+      const publicBackendUrl = pf.public_backend_url.trim();
+      if (whatsappServiceUrl && !/^https?:\/\//i.test(whatsappServiceUrl)) {
+        toast.error("L'URL du service OpenWA doit commencer par http:// ou https://");
+        setSaving(false);
+        return;
+      }
+      if (publicBackendUrl && !/^https?:\/\//i.test(publicBackendUrl)) {
+        toast.error("L'URL backend publique doit commencer par http:// ou https://");
+        setSaving(false);
+        return;
+      }
       const payload = {
         premium_enabled: pf.premium_enabled,
         review_visibility_paywall: pf.review_visibility_paywall,
-        whatsapp_service_url: pf.whatsapp_service_url.trim(),
-        public_backend_url: pf.public_backend_url.trim(),
+        whatsapp_service_url: whatsappServiceUrl,
+        public_backend_url: publicBackendUrl,
         whatsapp_session_id: pf.whatsapp_session_id.trim() || "default",
         whatsapp_verify_ssl: pf.whatsapp_verify_ssl,
         notifications_enabled: pf.notifications_enabled,
@@ -201,6 +226,9 @@ export default function AdminSettings() {
 
   const testWhatsApp = async () => {
     if (!waTestPhone) return toast.error("Entrez un numéro");
+    if (!pf.whatsapp_service_url || !/^https?:\/\//i.test(pf.whatsapp_service_url.trim())) {
+      return toast.error("Corrigez et enregistrez l'URL du service OpenWA avant le test");
+    }
     setWaTesting(true);
     setWaResult(null);
     try {
@@ -414,28 +442,32 @@ export default function AdminSettings() {
               </div>
             </div>
 
-            {s.platform.whatsapp_api_key_set && pf.whatsapp_service_url && (
-              <div className="mt-4 p-4 rounded-lg bg-[#1F4E3D]/5 border border-[#1F4E3D]/20">
-                <div className="font-['Manrope'] font-bold text-sm mb-2">Tester l'envoi WhatsApp</div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Input
-                    data-testid="wa-test-phone-input"
-                    value={waTestPhone}
-                    onChange={(e) => setWaTestPhone(e.target.value)}
-                    placeholder="+22890000000"
-                    className="h-10 flex-1 min-w-[200px]"
-                  />
-                  <Button
-                    type="button"
-                    onClick={testWhatsApp}
-                    disabled={waTesting}
-                    data-testid="wa-test-btn"
-                    className="bg-[#1F4E3D] hover:bg-[#163328] text-white rounded-full h-10"
-                  >
-                    <Send className="w-4 h-4 mr-1" /> {waTesting ? "Envoi..." : "Envoyer test"}
-                  </Button>
-                </div>
-                {waResult && (
+            <div className="mt-4 p-4 rounded-lg bg-[#1F4E3D]/5 border border-[#1F4E3D]/20">
+              <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+                <div className="font-['Manrope'] font-bold text-sm">Tester l'envoi WhatsApp</div>
+                {(!s.platform.whatsapp_api_key_set || !pf.whatsapp_service_url) && (
+                  <span className="text-xs text-[#C84B31] font-semibold">Enregistrez l'URL OpenWA et la clé API avant le test</span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  data-testid="wa-test-phone-input"
+                  value={waTestPhone}
+                  onChange={(e) => setWaTestPhone(e.target.value)}
+                  placeholder="+22890000000"
+                  className="h-10 flex-1 min-w-[200px]"
+                />
+                <Button
+                  type="button"
+                  onClick={testWhatsApp}
+                  disabled={waTesting}
+                  data-testid="wa-test-btn"
+                  className="bg-[#1F4E3D] hover:bg-[#163328] text-white rounded-full h-10"
+                >
+                  <Send className="w-4 h-4 mr-1" /> {waTesting ? "Envoi..." : "Envoyer test"}
+                </Button>
+              </div>
+              {waResult && (
                   <div
                     data-testid="wa-test-result"
                     className={`mt-3 rounded border overflow-hidden ${waResult.ok ? "bg-[#1F4E3D]/10 border-[#1F4E3D]/30" : "bg-[#C84B31]/10 border-[#C84B31]/30"}`}
@@ -459,9 +491,8 @@ export default function AdminSettings() {
                       </div>
                     </div>
                   </div>
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
 
@@ -574,6 +605,15 @@ export default function AdminSettings() {
                     title="Restaurer cette sauvegarde"
                   >
                     Restaurer
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => deleteBackup(b.filename)}
+                    className="h-8 px-2.5 rounded-lg text-xs border-[#C84B31] text-[#C84B31] hover:bg-[#C84B31]/10"
+                    title="Supprimer cette sauvegarde"
+                  >
+                    <Trash2 className="w-3 h-3 mr-1" /> Supprimer
                   </Button>
                 </div>
               </div>

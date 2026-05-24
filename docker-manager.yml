@@ -66,6 +66,8 @@ services:
     port: 8000
     extra_networks:
       - backend
+  db:
+    public: false
   mongoexpress:
     public: true
     domain: db_admin

@@ -632,6 +632,16 @@ async def admin_broadcasts_list(_: dict = Depends(require_admin), limit: int = 5
 
 BACKUP_DIR = "/Users/sefako/Documents/www/fazgom/backend/backups"
 
+def get_backup_path(filename: str) -> str:
+    safe_name = os.path.basename(filename or "")
+    if safe_name != filename or not safe_name.endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Nom de sauvegarde invalide")
+    backup_dir = os.path.abspath(BACKUP_DIR)
+    path = os.path.abspath(os.path.join(backup_dir, safe_name))
+    if not path.startswith(backup_dir + os.sep):
+        raise HTTPException(status_code=400, detail="Nom de sauvegarde invalide")
+    return path
+
 async def perform_restore(zip_bytes: bytes):
     import io
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zip_file:
@@ -724,14 +734,14 @@ async def admin_backup_list(_: dict = Depends(require_admin)):
 
 @router.get("/backup/download/{filename}")
 async def admin_backup_download(filename: str, _: dict = Depends(require_admin)):
-    filepath = os.path.join(BACKUP_DIR, filename)
+    filepath = get_backup_path(filename)
     if not os.path.exists(filepath):
         raise HTTPException(status_code=404, detail="Sauvegarde introuvable")
     return FileResponse(filepath, media_type="application/zip", filename=filename)
 
 @router.post("/backup/restore/{filename}")
 async def admin_backup_restore(filename: str, admin: dict = Depends(require_admin)):
-    filepath = os.path.join(BACKUP_DIR, filename)
+    filepath = get_backup_path(filename)
     if not os.path.exists(filepath):
         raise HTTPException(status_code=404, detail="Sauvegarde introuvable")
     try:
@@ -743,6 +753,19 @@ async def admin_backup_restore(filename: str, admin: dict = Depends(require_admi
     except Exception as e:
         logger.error(f"[RESTORE] failed: {e}")
         raise HTTPException(status_code=500, detail=f"Erreur lors de la restauration: {str(e)}")
+
+@router.delete("/backup/{filename}")
+async def admin_backup_delete(filename: str, admin: dict = Depends(require_admin)):
+    filepath = get_backup_path(filename)
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="Sauvegarde introuvable")
+    try:
+        os.remove(filepath)
+        logger.info(f"[BACKUP] backup deleted: {filename} by admin={admin['id']}")
+        return {"deleted": True, "filename": filename}
+    except Exception as e:
+        logger.error(f"[BACKUP] delete failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la suppression: {str(e)}")
 
 @router.post("/backup/upload-restore")
 async def admin_backup_upload_restore(file: UploadFile = File(...), admin: dict = Depends(require_admin)):
