@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Depends
 
 from app.database import db
 from app.models import ForumQuestionCreate, ForumQuestionUpdate, ForumAnswerCreate, ForumAnswerUpdate, ForumReport, ForumReplyCreate, ForumReactRequest
-from app.helpers import get_current_user, now_iso, notify_user
+from app.helpers import get_current_user, now_iso, notify_user, create_in_app_notification
 
 router = APIRouter(prefix="/forum", tags=["forum"])
 
@@ -205,6 +205,17 @@ async def forum_answer_create(q_id: str, data: ForumAnswerCreate, user: dict = D
             q["author_id"],
             f"💡 Kaba-Compta : *{user.get('display_name')}* a répondu à votre question « {q['title']} »."
         )
+        await create_in_app_notification(
+            q["author_id"],
+            "forum_answer",
+            "Nouvelle réponse",
+            f"{user.get('display_name')} a répondu à votre question.",
+            actor_id=user["id"],
+            actor_name=user.get("display_name"),
+            entity_type="forum_question",
+            entity_id=q_id,
+            link=f"/app/forum/{q_id}",
+        )
     ans.pop("_id", None)
     return ans
 
@@ -332,6 +343,18 @@ async def forum_question_react(q_id: str, data: ForumReactRequest, user: dict = 
     reactions = q.get("reactions") or {}
     reactions = toggle_reaction_dict(reactions, user["id"], data.emoji)
     await db.forum_questions.update_one({"id": q_id}, {"$set": {"reactions": reactions}})
+    if q.get("author_id") != user["id"]:
+        await create_in_app_notification(
+            q["author_id"],
+            "forum_reaction",
+            "Nouvelle réaction",
+            f"{user.get('display_name')} a réagi à votre question.",
+            actor_id=user["id"],
+            actor_name=user.get("display_name"),
+            entity_type="forum_question",
+            entity_id=q_id,
+            link=f"/app/forum/{q_id}",
+        )
     return {"reactions": reactions}
 
 @router.post("/answers/{a_id}/react")
@@ -342,6 +365,18 @@ async def forum_answer_react(a_id: str, data: ForumReactRequest, user: dict = De
     reactions = a.get("reactions") or {}
     reactions = toggle_reaction_dict(reactions, user["id"], data.emoji)
     await db.forum_answers.update_one({"id": a_id}, {"$set": {"reactions": reactions}})
+    if a.get("author_id") != user["id"]:
+        await create_in_app_notification(
+            a["author_id"],
+            "forum_reaction",
+            "Nouvelle réaction",
+            f"{user.get('display_name')} a réagi à votre réponse.",
+            actor_id=user["id"],
+            actor_name=user.get("display_name"),
+            entity_type="forum_answer",
+            entity_id=a_id,
+            link=f"/app/forum/{a.get('question_id')}",
+        )
     return {"reactions": reactions}
 
 @router.post("/answers/{a_id}/replies")
@@ -372,6 +407,17 @@ async def forum_answer_reply(a_id: str, data: ForumReplyCreate, user: dict = Dep
             await notify_user(
                 a["author_id"],
                 f"💬 Kaba-Compta : *{user.get('display_name')}* a répondu à votre commentaire sur la question « {q['title']} »."
+            )
+            await create_in_app_notification(
+                a["author_id"],
+                "forum_reply",
+                "Nouveau commentaire",
+                f"{user.get('display_name')} a répondu à votre réponse.",
+                actor_id=user["id"],
+                actor_name=user.get("display_name"),
+                entity_type="forum_answer",
+                entity_id=a_id,
+                link=f"/app/forum/{a.get('question_id')}",
             )
             
     reply["author_avatar"] = user.get("avatar_url")

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Briefcase, Plus, MapPin, Clock, Search } from "lucide-react";
+import { Briefcase, Plus, MapPin, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -22,13 +22,33 @@ const MISSION_TYPES = [
   { v: "autre", l: "Autre" },
 ];
 
-const STATUS_LABELS = {
-  ouverte: { l: "Ouverte aux offres", c: "bg-[#1F4E3D] text-white" },
-  en_discussion: { l: "En discussion", c: "bg-[#ECA869] text-[#2D2D2D]" },
-  en_travail: { l: "En cours", c: "bg-[#C84B31] text-white" },
-  terminee: { l: "Terminée", c: "bg-[#6C6C6C] text-white" },
-  annulee: { l: "Annulée", c: "bg-[#D32F2F] text-white" },
+const CONTRACT_LABELS = {
+  ponctuelle: "Mission ponctuelle",
+  saisonnier: "Renfort saisonnier",
+  stage: "Stage professionnel",
+  cdd: "CDD",
+  cdi: "CDI",
 };
+
+const LEVEL_LABELS = {
+  junior: "Junior",
+  intermediaire: "Intermédiaire",
+  senior: "Senior",
+};
+
+const formatCompactBudget = (n) => Number(n || 0).toLocaleString("fr-FR").replaceAll(" ", ".").replaceAll(" ", ".");
+
+const STATUS_COLORS = {
+  ouverte: { style: { background: "#EAF5EE", borderColor: "#1F4E3D", borderWidth: 2 } },
+  en_discussion: { style: { background: "#EAF5EE", borderColor: "#1F4E3D", borderWidth: 2 } },
+  en_travail: { style: { background: "#EAF5EE", borderColor: "#1F4E3D", borderWidth: 2 } },
+  terminee: { style: { background: "#FFF4E3", borderColor: "#ECA869", borderWidth: 2 } },
+  annulee: { style: { background: "#FFF1F1", borderColor: "#D32F2F", borderWidth: 2 } },
+};
+
+const CONTRACT_TAG = "inline-flex px-2 py-0.5 rounded-full bg-white/75 text-[#2D2D2D] border border-[#D9D1C3] text-xs font-semibold";
+const LEVEL_TAG = "inline-flex px-2 py-0.5 rounded-full bg-[#ECA869]/20 text-[#2D2D2D] border border-[#ECA869]/40 text-xs font-semibold";
+const REMOTE_TAG = "inline-flex px-2 py-0.5 rounded-full bg-[#FFF4E3] text-[#A8661F] border border-[#ECA869] text-xs font-semibold";
 
 export default function Missions() {
   const { user } = useAuth();
@@ -126,32 +146,36 @@ export default function Missions() {
 }
 
 function MissionCard({ m, isMerchant }) {
-  const st = STATUS_LABELS[m.status] || { l: m.status, c: "bg-gray-200" };
-  const budget = m.budget_min_fcfa && m.budget_max_fcfa
-    ? `${fmtFCFA(m.budget_min_fcfa)} – ${fmtFCFA(m.budget_max_fcfa)}`
-    : m.budget_min_fcfa
-      ? `À partir de ${fmtFCFA(m.budget_min_fcfa)}`
-      : m.budget_max_fcfa
-        ? `Jusqu'à ${fmtFCFA(m.budget_max_fcfa)}`
+  const tone = STATUS_COLORS[m.status] || STATUS_COLORS.ouverte;
+  const budget = (m.budget_min_fcfa != null && m.budget_max_fcfa != null)
+    ? (m.budget_min_fcfa === m.budget_max_fcfa
+      ? fmtFCFA(m.budget_min_fcfa)
+      : fmtFCFA(m.budget_min_fcfa) + " – " + fmtFCFA(m.budget_max_fcfa))
+    : m.budget_min_fcfa != null
+      ? "À partir de " + fmtFCFA(m.budget_min_fcfa)
+      : m.budget_max_fcfa != null
+        ? "<" + formatCompactBudget(m.budget_max_fcfa) + " FCFA"
         : "Budget à discuter";
   return (
-    <Link to={`/app/missions/${m.id}`} className="block card-flat p-4 hover:border-[#C84B31] transition" data-testid={`mission-card-${m.id}`}>
+    <Link to={`/app/missions/${m.id}`} className="block card-flat p-4 transition hover:border-[#C84B31]" style={tone.style} data-testid={`mission-card-${m.id}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="font-['Manrope'] font-bold">{m.title}</div>
           <div className="text-xs text-[#6C6C6C] mt-1 flex items-center gap-2 flex-wrap">
             <span className="capitalize">{m.type?.replace(/_/g, " ")}</span>
             <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3" /> {m.location}</span>
-            <span className="flex items-center gap-0.5"><Clock className="w-3 h-3" /> {m.duration_hours}h</span>
-            {m.remote_ok && <span className="text-[#1F4E3D] font-semibold">· Télétravail OK</span>}
           </div>
         </div>
         <div className="text-right shrink-0">
           <div className="font-['Manrope'] font-bold text-[#C84B31] text-sm">{budget}</div>
-          <span className={`inline-block text-xs px-2 py-0.5 rounded-full mt-1 ${st.c}`}>{st.l}</span>
         </div>
       </div>
-      <div className="text-sm text-[#2D2D2D]/80 mt-2 line-clamp-2">{m.description}</div>
+      <div className="mt-2 flex items-center gap-2 flex-wrap">
+        <span className={CONTRACT_TAG}>{CONTRACT_LABELS[m.contract_type] || m.contract_type}</span>
+        <span className={LEVEL_TAG}>{LEVEL_LABELS[m.level] || m.level}</span>
+        {m.remote_ok && <span className={REMOTE_TAG}>Télétravail</span>}
+      </div>
+      <p className="mt-3 text-sm text-[#2D2D2D]/85 line-clamp-2">{m.description}</p>
       <div className="flex items-center justify-between mt-2 text-xs text-[#6C6C6C]">
         <span>Par <strong>{m.merchant_shop || m.merchant_name}</strong></span>
         {isMerchant && m.offers_count > 0 && (

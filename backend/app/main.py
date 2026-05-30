@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import JWT_SECRET, JWT_ALGORITHM, logger
 from app.database import db, client
 from app.helpers import hash_password, now_iso, normalize_phone
-from app.routers import auth, profile, missions, messages, reviews, forum, premium, admin, config_routes
+from app.routers import auth, profile, missions, messages, reviews, forum, premium, admin, config_routes, notifications
 
 app = FastAPI(title="Kaba-Compta API", version="1.2.0")
 
@@ -23,6 +23,7 @@ api_router.include_router(forum.router)
 api_router.include_router(premium.router)
 api_router.include_router(admin.router)
 api_router.include_router(config_routes.router)
+api_router.include_router(notifications.router)
 
 @api_router.get("/")
 async def root():

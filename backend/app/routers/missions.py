@@ -89,11 +89,23 @@ async def mission_update(mission_id: str, data: MissionUpdate, user: dict = Depe
         raise HTTPException(status_code=403, detail="Non autorisé")
     if m["status"] not in ("ouverte", "en_discussion"):
         raise HTTPException(status_code=400, detail="Mission non modifiable")
-    update = {k: v for k, v in data.model_dump().items() if v is not None}
+    update = data.model_dump(exclude_unset=True)
     update["updated_at"] = now_iso()
     await db.missions.update_one({"id": mission_id}, {"$set": update})
     fresh = await db.missions.find_one({"id": mission_id}, {"_id": 0})
     return fresh
+
+@router.delete("/missions/{mission_id}")
+async def mission_delete(mission_id: str, user: dict = Depends(get_current_user)):
+    m = await db.missions.find_one({"id": mission_id}, {"_id": 0})
+    if not m or m["merchant_id"] != user["id"]:
+        raise HTTPException(status_code=403, detail="Non autorisé")
+    if m["status"] not in ("ouverte", "en_discussion", "annulee"):
+        raise HTTPException(status_code=400, detail="Mission non supprimable")
+    await db.missions.delete_one({"id": mission_id})
+    await db.offers.delete_many({"mission_id": mission_id})
+    await db.messages.delete_many({"mission_id": mission_id})
+    return {"deleted": True}
 
 @router.post("/missions/{mission_id}/cancel")
 async def mission_cancel(mission_id: str, user: dict = Depends(get_current_user)):
@@ -110,7 +122,7 @@ async def mission_cancel(mission_id: str, user: dict = Depends(get_current_user)
     if m.get("selected_assistant_id"):
         await notify_user(
             m["selected_assistant_id"],
-            f"⚠️ Kaba-Compta : La mission « {m['title']} » a été annulée par le marchand."
+            f"⚠️ Kaba-Compta : La mission « {m['title']} » a été fermée par le marchand."
         )
     return {"cancelled": True}
 

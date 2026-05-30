@@ -135,6 +135,36 @@ async def notify_user(user_id: str, text: str) -> None:
     if u and u.get("phone"):
         notify_async(u["phone"], text)
 
+async def create_in_app_notification(
+    user_id: str,
+    notif_type: str,
+    title: str,
+    body: str,
+    *,
+    actor_id: Optional[str] = None,
+    actor_name: Optional[str] = None,
+    entity_type: Optional[str] = None,
+    entity_id: Optional[str] = None,
+    link: Optional[str] = None,
+) -> dict:
+    doc = {
+        "id": str(os.urandom(16).hex()),
+        "user_id": user_id,
+        "type": notif_type,
+        "title": title,
+        "body": body,
+        "actor_id": actor_id,
+        "actor_name": actor_name,
+        "entity_type": entity_type,
+        "entity_id": entity_id,
+        "link": link,
+        "is_read": False,
+        "created_at": now_iso(),
+    }
+    await db.notifications.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
 async def check_and_expire_kyc():
     from datetime import datetime, timezone
     today_iso = datetime.now(timezone.utc).date().isoformat()

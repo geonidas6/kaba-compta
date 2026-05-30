@@ -6,6 +6,16 @@ import { useAuth } from "@/lib/auth";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
+const formatCompactBudget = (n) => Number(n || 0).toLocaleString("fr-FR").replaceAll(" ", ".").replaceAll(" ", ".");
+
+const STATUS_COLORS = {
+  ouverte: { style: { background: "#EAF5EE", borderColor: "#1F4E3D", borderWidth: 2 } },
+  en_discussion: { style: { background: "#EAF5EE", borderColor: "#1F4E3D", borderWidth: 2 } },
+  en_travail: { style: { background: "#EAF5EE", borderColor: "#1F4E3D", borderWidth: 2 } },
+  terminee: { style: { background: "#FFF4E3", borderColor: "#ECA869", borderWidth: 2 } },
+  annulee: { style: { background: "#FFF1F1", borderColor: "#D32F2F", borderWidth: 2 } },
+};
+
 export default function AssistantDashboard() {
   const { user, refresh } = useAuth();
   const [missions, setMissions] = useState([]);
@@ -42,7 +52,7 @@ export default function AssistantDashboard() {
         </h1>
         <div className="flex items-center gap-2 mt-2 flex-wrap">
           <span className="inline-flex items-center gap-1 text-xs font-semibold bg-[#1F4E3D] text-white px-2.5 py-1 rounded-full">
-            <GraduationCap className="w-3.5 h-3.5" /> Niveau Licence
+            <GraduationCap className="w-3.5 h-3.5" /> Niveau {user?.education_level || "Licence"}
           </span>
           {user?.is_premium && (
             <span className="inline-flex items-center gap-1 text-xs font-semibold bg-[#ECA869] text-[#2D2D2D] px-2.5 py-1 rounded-full">
@@ -57,6 +67,16 @@ export default function AssistantDashboard() {
               <ShieldCheck className="w-3.5 h-3.5" /> Vérifié
             </span>
           )}
+        </div>
+      </div>
+
+
+      <div className="card-flat p-3">
+        <div className="text-xs font-bold uppercase tracking-widest text-[#1F4E3D] mb-2">Code couleur des missions</div>
+        <div className="flex items-center gap-2 flex-wrap text-xs font-semibold">
+          <span className="inline-flex items-center gap-1.5 text-[#1F4E3D]"><span className="w-2.5 h-2.5 rounded-full bg-[#1F4E3D]"></span>Ouverte</span>
+          <span className="inline-flex items-center gap-1.5 text-[#D32F2F]"><span className="w-2.5 h-2.5 rounded-full bg-[#D32F2F]"></span>Fermée</span>
+          <span className="inline-flex items-center gap-1.5 text-[#A8661F]"><span className="w-2.5 h-2.5 rounded-full bg-[#ECA869]"></span>Terminée</span>
         </div>
       </div>
 
@@ -147,15 +167,18 @@ function Stat({ icon: Icon, label, value, color, testid }) {
 }
 
 function MissionCard({ m }) {
-  const budget = m.budget_min_fcfa && m.budget_max_fcfa
-    ? `${fmtFCFA(m.budget_min_fcfa)} – ${fmtFCFA(m.budget_max_fcfa)}`
-    : m.budget_min_fcfa
-      ? `À partir de ${fmtFCFA(m.budget_min_fcfa)}`
-      : m.budget_max_fcfa
-        ? `Jusqu'à ${fmtFCFA(m.budget_max_fcfa)}`
-        : "À discuter";
+  const tone = STATUS_COLORS[m.status] || STATUS_COLORS.ouverte;
+  const budget = (m.budget_min_fcfa != null && m.budget_max_fcfa != null)
+    ? (m.budget_min_fcfa === m.budget_max_fcfa
+      ? fmtFCFA(m.budget_min_fcfa)
+      : fmtFCFA(m.budget_min_fcfa) + " – " + fmtFCFA(m.budget_max_fcfa))
+    : m.budget_min_fcfa != null
+      ? "À partir de " + fmtFCFA(m.budget_min_fcfa)
+      : m.budget_max_fcfa != null
+        ? "<" + formatCompactBudget(m.budget_max_fcfa) + " FCFA"
+        : "Budget à discuter";
   return (
-    <Link to={`/app/missions/${m.id}`} className="block card-flat p-4 hover:border-[#C84B31]" data-testid={`mission-card-${m.id}`}>
+    <Link to={`/app/missions/${m.id}`} className="block card-flat p-4 transition hover:border-[#C84B31]" style={tone.style} data-testid={`mission-card-${m.id}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="font-['Manrope'] font-bold truncate">{m.title}</div>
@@ -165,10 +188,9 @@ function MissionCard({ m }) {
         </div>
         <div className="text-right shrink-0">
           <div className="font-['Manrope'] font-bold text-[#C84B31] text-sm">{budget}</div>
-          <div className="text-xs text-[#6C6C6C] capitalize">{m.type?.replace(/_/g, " ")}</div>
         </div>
       </div>
-      <div className="mt-2 text-sm text-[#2D2D2D]/85 line-clamp-2">{m.description}</div>
+      <p className="mt-3 text-sm text-[#2D2D2D]/85 line-clamp-2">{m.description}</p>
       {m.offers_count > 0 && (
         <div className="text-xs text-[#6C6C6C] mt-2">{m.offers_count} offre{m.offers_count > 1 ? "s" : ""} déjà reçue{m.offers_count > 1 ? "s" : ""}</div>
       )}

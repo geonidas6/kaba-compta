@@ -85,7 +85,7 @@ function LoginForm() {
       <p className="text-sm text-[#6C6C6C]">Entrez votre numéro et votre mot de passe.</p>
 
       <div className="space-y-1.5">
-        <Label htmlFor="phone-login">Numéro de téléphone</Label>
+        <Label htmlFor="phone-login">Numéro de téléphone <span className="text-[#C84B31]">*</span></Label>
         <div className="relative">
           <Phone className="w-4 h-4 absolute left-3 top-3.5 text-[#6C6C6C]" />
           <Input
@@ -101,7 +101,7 @@ function LoginForm() {
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="password-login">Mot de passe</Label>
+        <Label htmlFor="password-login">Mot de passe <span className="text-[#C84B31]">*</span></Label>
         <div className="relative">
           <Lock className="w-4 h-4 absolute left-3 top-3.5 text-[#6C6C6C]" />
           <Input
@@ -213,7 +213,7 @@ function RegisterForm({ initialRole, onDone }) {
         )}
 
         <div className="space-y-1.5">
-          <Label htmlFor="otp">Code à 6 chiffres</Label>
+          <Label htmlFor="otp">Code à 6 chiffres <span className="text-[#C84B31]">*</span></Label>
           <Input
             id="otp"
             data-testid="otp-input"
@@ -280,7 +280,7 @@ function RegisterForm({ initialRole, onDone }) {
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="phone-reg">Téléphone (T-Money / Moov Money)</Label>
+        <Label htmlFor="phone-reg">Téléphone (T-Money / Moov Money) <span className="text-[#C84B31]">*</span></Label>
         <Input
           id="phone-reg"
           data-testid="register-phone-input"
@@ -293,7 +293,7 @@ function RegisterForm({ initialRole, onDone }) {
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="name-reg">{role === "merchant" ? "Votre prénom / pseudo" : "Votre nom complet"}</Label>
+        <Label htmlFor="name-reg">{role === "merchant" ? "Votre prénom / pseudo" : "Votre nom complet"} <span className="text-[#C84B31]">*</span></Label>
         <Input
           id="name-reg"
           data-testid="register-name-input"
@@ -306,7 +306,7 @@ function RegisterForm({ initialRole, onDone }) {
 
       {role === "merchant" && (
         <div className="space-y-1.5">
-          <Label htmlFor="shop-reg">Nom de votre boutique / activité</Label>
+          <Label htmlFor="shop-reg">Nom de votre boutique / activité <span className="text-[#C84B31]">*</span></Label>
           <Input
             id="shop-reg"
             data-testid="register-shop-input"
@@ -331,7 +331,7 @@ function RegisterForm({ initialRole, onDone }) {
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="pwd-reg">Mot de passe</Label>
+        <Label htmlFor="pwd-reg">Mot de passe <span className="text-[#C84B31]">*</span></Label>
         <Input
           id="pwd-reg"
           data-testid="register-password-input"

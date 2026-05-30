@@ -1,9 +1,15 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { MessageSquare, Plus, ArrowUp, MessageCircle, Search, Filter } from "lucide-react";
+import { MessageSquare, Plus, MessageCircle, Search, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
+
+const reactionCount = (reactions = {}) =>
+  Object.values(reactions).reduce(
+    (acc, users) => acc + (Array.isArray(users) ? users.length : 0),
+    0
+  );
 
 const SORTS = [
   { v: "recent", l: "Récents" },
@@ -41,7 +47,7 @@ export default function Forum() {
   return (
     <div className="space-y-5" data-testid="forum-page">
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <p className="uppercase text-xs tracking-widest text-[#1F4E3D] font-bold">Communauté</p>
           <h1 className="font-['Manrope'] font-extrabold text-3xl mt-1 flex items-center gap-2">
             <MessageSquare className="w-7 h-7 text-[#C84B31]" /> Forum
@@ -50,7 +56,7 @@ export default function Forum() {
             Posez vos questions, partagez votre expérience comptable et commerçante.
           </p>
         </div>
-        <Link to="/app/forum/new">
+        <Link to="/app/forum/new" className="shrink-0">
           <Button data-testid="new-question-btn" className="bg-[#C84B31] hover:bg-[#A83E28] text-white rounded-full">
             <Plus className="w-4 h-4 mr-1" /> Question
           </Button>
@@ -129,16 +135,6 @@ export default function Forum() {
             data-testid={`question-${q.id}`}
           >
             <div className="flex gap-4">
-              <div className="text-center min-w-[44px]">
-                <div className="flex flex-col items-center text-[#1F4E3D]">
-                  <ArrowUp className="w-4 h-4" />
-                  <div className="font-['Manrope'] font-bold">{q.votes}</div>
-                </div>
-                <div className="mt-2 flex flex-col items-center text-[#6C6C6C]">
-                  <MessageCircle className="w-3.5 h-3.5" />
-                  <div className="text-xs">{q.answers_count}</div>
-                </div>
-              </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1.5">
                   {q.author_avatar ? (
@@ -158,7 +154,7 @@ export default function Forum() {
                     <span>({q.author_role === "merchant" ? "Marchand" : q.author_role === "assistant" ? "Comptable" : "Admin"})</span>
                   </span>
                 </div>
-                <div className="font-['Manrope'] font-bold text-base">{q.title}</div>
+                <div className="font-['Manrope'] font-bold text-[15px] leading-snug">{q.title}</div>
                 <div className="text-sm text-[#2D2D2D]/80 mt-1 line-clamp-2">{q.body}</div>
                 <div className="flex flex-wrap items-center gap-1.5 mt-2">
                   {(q.tags || []).map((t) => (
@@ -166,6 +162,15 @@ export default function Forum() {
                       #{t}
                     </span>
                   ))}
+                </div>
+                <div className="mt-3 pt-2 border-t border-[#EAE5D9]/60 flex items-center gap-4 text-xs text-[#6C6C6C]">
+                  <span className="inline-flex items-center gap-1">
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    {q.answers_count}
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    👍 {reactionCount(q.reactions)}
+                  </span>
                 </div>
               </div>
             </div>

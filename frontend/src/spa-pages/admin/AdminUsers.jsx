@@ -18,11 +18,20 @@ export default function AdminUsers() {
 
 
   const load = async () => {
-    const params = {};
-    if (role !== "all") params.role = role;
-    if (q) params.q = q;
-    const r = await api.get("/admin/users", { params });
-    setUsers(r.data);
+    try {
+      const params = {};
+      if (role !== "all") params.role = role;
+      if (q) params.q = q;
+      const r = await api.get("/admin/users", { params });
+      setUsers(r.data);
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status === 401 || status === 403) {
+        toast.error("Session admin expirée, reconnectez-vous.");
+      } else {
+        toast.error(err?.response?.data?.detail || "Erreur de chargement des utilisateurs");
+      }
+    }
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [role]);

@@ -9,10 +9,10 @@ import { toast } from "sonner";
 
 const STATUS_LABELS = {
   ouverte: "Ouverte",
-  en_discussion: "En discussion",
+  en_discussion: "Ouverte",
   en_travail: "En cours",
   terminee: "Terminée",
-  annulee: "Annulée",
+  annulee: "Fermé",
 };
 
 export default function Messages() {

@@ -140,8 +140,11 @@ async def kyc_upload(
     if doc_type in ("id_card", "passport") and expiry_date:
         doc["expiry_date"] = expiry_date
     await db.kyc_documents.insert_one(doc)
-    await db.users.update_one({"id": user["id"]}, {"$set": {"kyc_status": "pending"}})
-    return {"id": doc["id"], "doc_type": doc_type, "size": doc["size"], "uploaded_at": doc["uploaded_at"]}
+    docs = await db.kyc_documents.find({"user_id": user["id"]}, {"doc_type": 1}).to_list(50)
+    doc_types = {d.get("doc_type") for d in docs} | {doc_type}
+    next_status = "pending" if (doc_types & {"id_card", "passport"}) and "diploma" in doc_types else "incomplete"
+    await db.users.update_one({"id": user["id"]}, {"$set": {"kyc_status": next_status}})
+    return {"id": doc["id"], "doc_type": doc_type, "size": doc["size"], "uploaded_at": doc["uploaded_at"], "kyc_status": next_status}
 
 @router.get("/kyc/my")
 async def kyc_my(user: dict = Depends(get_current_user)):

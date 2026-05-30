@@ -21,6 +21,11 @@ const MISSION_TYPES = [
   { v: "autre", l: "Autre besoin comptable" },
 ];
 
+const PRICING_MODES = [
+  { v: "fixed", l: "Prix fixe" },
+  { v: "max", l: "Prix maximum" },
+];
+
 export default function MissionCreate() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -28,9 +33,10 @@ export default function MissionCreate() {
     title: "",
     description: "",
     type: "caisse",
+    pricing_mode: "fixed",
     budget_min_fcfa: "",
     budget_max_fcfa: "",
-    duration_hours: 2,
+    fixed_price_fcfa: "",
     location: "Lomé",
     contract_type: "ponctuelle",
     level: "intermediaire",
@@ -42,10 +48,17 @@ export default function MissionCreate() {
     setLoading(true);
     try {
       const payload = { ...form };
-      payload.duration_hours = parseFloat(form.duration_hours) || 2;
-      payload.budget_min_fcfa = form.budget_min_fcfa ? parseFloat(form.budget_min_fcfa) : null;
-      payload.budget_max_fcfa = form.budget_max_fcfa ? parseFloat(form.budget_max_fcfa) : null;
-      
+      if (form.pricing_mode === "fixed") {
+        const fixed = form.fixed_price_fcfa ? parseFloat(form.fixed_price_fcfa) : null;
+        payload.budget_min_fcfa = fixed;
+        payload.budget_max_fcfa = fixed;
+      } else if (form.pricing_mode === "max") {
+        payload.budget_min_fcfa = null;
+        payload.budget_max_fcfa = form.budget_max_fcfa ? parseFloat(form.budget_max_fcfa) : null;
+      }
+      delete payload.pricing_mode;
+      delete payload.fixed_price_fcfa;
+
       await api.post("/missions", payload);
       toast.success("Votre offre de mission a été publiée avec succès !");
       navigate("/app/missions");
@@ -74,7 +87,7 @@ export default function MissionCreate() {
         {/* Form Column */}
         <form onSubmit={submit} className="lg:col-span-2 card-flat p-6 space-y-4 bg-white" data-testid="mission-create-form">
           <div className="space-y-1">
-            <Label className="text-sm font-semibold text-[#2D2D2D]">Titre de la mission</Label>
+            <Label className="text-sm font-semibold text-[#2D2D2D]">Titre de la mission <span className="text-[#C84B31]">*</span></Label>
             <Input
               value={form.title}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -101,7 +114,7 @@ export default function MissionCreate() {
             </div>
 
             <div className="space-y-1">
-              <Label className="text-sm font-semibold text-[#2D2D2D]">Ville / Lieu d'exécution</Label>
+              <Label className="text-sm font-semibold text-[#2D2D2D]">Ville / Lieu d'exécution <span className="text-[#C84B31]">*</span></Label>
               <Input
                 value={form.location}
                 onChange={(e) => setForm({ ...form, location: e.target.value })}
@@ -113,7 +126,7 @@ export default function MissionCreate() {
           </div>
 
           <div className="space-y-1">
-            <Label className="text-sm font-semibold text-[#2D2D2D]">Description détaillée du besoin</Label>
+            <Label className="text-sm font-semibold text-[#2D2D2D]">Description détaillée du besoin <span className="text-[#C84B31]">*</span></Label>
             <Textarea
               rows={6}
               value={form.description}
@@ -125,47 +138,58 @@ export default function MissionCreate() {
             />
           </div>
 
-          <div className="grid sm:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <Label className="text-sm font-semibold text-[#2D2D2D]">Budget estimé Minimum (FCFA)</Label>
-              <Input
-                type="number"
-                value={form.budget_min_fcfa}
-                onChange={(e) => setForm({ ...form, budget_min_fcfa: e.target.value })}
-                placeholder="Ex: 5000"
-                className="h-11 border-[#EAE5D9]"
-                data-testid="mission-budget-min-input"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-sm font-semibold text-[#2D2D2D]">Budget estimé Maximum (FCFA)</Label>
-              <Input
-                type="number"
-                value={form.budget_max_fcfa}
-                onChange={(e) => setForm({ ...form, budget_max_fcfa: e.target.value })}
-                placeholder="Ex: 15000"
-                className="h-11 border-[#EAE5D9]"
-                data-testid="mission-budget-max-input"
-              />
-            </div>
+          <div className="space-y-1">
+            <Label className="text-sm font-semibold text-[#2D2D2D]">Mode de prix</Label>
+            <Select value={form.pricing_mode} onValueChange={(v) => setForm({ ...form, pricing_mode: v })}>
+              <SelectTrigger className="h-11 border-[#EAE5D9]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PRICING_MODES.map((p) => (
+                  <SelectItem key={p.v} value={p.v}>{p.l}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
-          <div className="grid sm:grid-cols-3 gap-4">
-            <div className="space-y-1">
-              <Label className="text-sm font-semibold text-[#2D2D2D]">Durée estimée (heures)</Label>
-              <Input
-                type="number"
-                step="0.5"
-                value={form.duration_hours}
-                onChange={(e) => setForm({ ...form, duration_hours: e.target.value })}
-                required
-                className="h-11 border-[#EAE5D9]"
-              />
-            </div>
+          <div className="grid sm:grid-cols-2 gap-4">
+            {(form.pricing_mode === "fixed") && (
+              <div className="space-y-1">
+                <Label className="text-sm font-semibold text-[#2D2D2D]">
+                  Prix fixe (FCFA)
+                </Label>
+                <Input
+                  type="number"
+                  value={form.fixed_price_fcfa}
+                  onChange={(e) => setForm({
+                    ...form,
+                    fixed_price_fcfa: e.target.value,
+                  })}
+                  placeholder="Ex: 12000"
+                  className="h-11 border-[#EAE5D9]"
+                  data-testid="mission-budget-min-input"
+                />
+              </div>
+            )}
 
+            {(form.pricing_mode === "max") && (
+              <div className="space-y-1">
+                <Label className="text-sm font-semibold text-[#2D2D2D]">Prix maximum (FCFA)</Label>
+                <Input
+                  type="number"
+                  value={form.budget_max_fcfa}
+                  onChange={(e) => setForm({ ...form, budget_max_fcfa: e.target.value })}
+                  placeholder="<150.000"
+                  className="h-11 border-[#EAE5D9]"
+                  data-testid="mission-budget-max-input"
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <Label className="text-sm font-semibold text-[#2D2D2D]">Type de contrat</Label>
+              <Label className="text-sm font-semibold text-[#2D2D2D]">Type de contrat <span className="text-[#C84B31]">*</span></Label>
               <Select value={form.contract_type} onValueChange={(v) => setForm({ ...form, contract_type: v })}>
                 <SelectTrigger className="h-11 border-[#EAE5D9]">
                   <SelectValue />
@@ -181,7 +205,7 @@ export default function MissionCreate() {
             </div>
 
             <div className="space-y-1">
-              <Label className="text-sm font-semibold text-[#2D2D2D]">Niveau d'expérience requis</Label>
+              <Label className="text-sm font-semibold text-[#2D2D2D]">Niveau d'expérience requis <span className="text-[#C84B31]">*</span></Label>
               <Select value={form.level} onValueChange={(v) => setForm({ ...form, level: v })}>
                 <SelectTrigger className="h-11 border-[#EAE5D9]">
                   <SelectValue />

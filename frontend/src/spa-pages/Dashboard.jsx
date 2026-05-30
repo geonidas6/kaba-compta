@@ -6,11 +6,11 @@ import { api, fmtFCFA } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
 const STATUS = {
-  ouverte: "Ouverte",
-  en_discussion: "En discussion",
-  en_travail: "En cours",
-  terminee: "Terminée",
-  annulee: "Annulée",
+  ouverte: { l: "Ouverte", c: "bg-[#1F4E3D] text-white" },
+  en_discussion: { l: "Ouverte", c: "bg-[#1F4E3D] text-white" },
+  en_travail: { l: "En cours", c: "bg-[#C84B31] text-white" },
+  terminee: { l: "Terminée", c: "bg-[#ECA869] text-[#2D2D2D]" },
+  annulee: { l: "Fermée", c: "bg-[#D32F2F] text-white" },
 };
 
 export default function Dashboard() {
@@ -33,6 +33,15 @@ export default function Dashboard() {
         <p className="text-[#6C6C6C] mt-1">
           Publiez vos missions et trouvez le bon comptable.
         </p>
+      </div>
+
+      <div className="card-flat p-3">
+        <div className="text-xs font-bold uppercase tracking-widest text-[#1F4E3D] mb-2">Code couleur des missions</div>
+        <div className="flex items-center gap-2 flex-wrap text-xs font-semibold">
+          <span className="inline-flex items-center gap-1.5 text-[#1F4E3D]"><span className="w-2.5 h-2.5 rounded-full bg-[#1F4E3D]"></span>Ouverte</span>
+          <span className="inline-flex items-center gap-1.5 text-[#D32F2F]"><span className="w-2.5 h-2.5 rounded-full bg-[#D32F2F]"></span>Fermée</span>
+          <span className="inline-flex items-center gap-1.5 text-[#A8661F]"><span className="w-2.5 h-2.5 rounded-full bg-[#ECA869]"></span>Terminée</span>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -75,7 +84,7 @@ export default function Dashboard() {
               <Link to={`/app/missions/${m.id}`} key={m.id} className="block card-flat p-3 hover:border-[#C84B31]">
                 <div className="flex items-center justify-between">
                   <div className="font-['Manrope'] font-bold truncate">{m.title}</div>
-                  <span className="text-xs text-[#6C6C6C]">{STATUS[m.status]}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS[m.status]?.c || ""}`}>{STATUS[m.status]?.l || m.status}</span>
                 </div>
                 <div className="text-xs text-[#6C6C6C] flex items-center gap-2 mt-1">
                   <span>{m.offers_count || 0} offre{(m.offers_count || 0) > 1 ? "s" : ""}</span>

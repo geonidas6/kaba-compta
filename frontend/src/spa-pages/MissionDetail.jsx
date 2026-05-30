@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { MapPin, Clock, Crown, Star, Send, MessageCircle, CheckCircle2, XCircle, Edit2 } from "lucide-react";
+import { MapPin, Crown, Star, Send, MessageCircle, CheckCircle2, XCircle, Edit2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,12 +12,33 @@ import { api, fmtFCFA } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { toast } from "sonner";
 
+const CONTRACT_LABELS = {
+  ponctuelle: "Mission ponctuelle",
+  saisonnier: "Renfort saisonnier",
+  stage: "Stage professionnel",
+  cdd: "CDD",
+  cdi: "CDI",
+};
+
+const LEVEL_LABELS = {
+  junior: "Junior",
+  intermediaire: "Intermédiaire",
+  senior: "Senior",
+};
+
+const formatCompactBudget = (n) => Number(n || 0).toLocaleString("fr-FR").replaceAll(" ", ".").replaceAll(" ", ".");
+
+const TAG_CLASS = "px-2 py-0.5 rounded-full font-semibold";
+const CONTRACT_TAG = `${TAG_CLASS} bg-white/75 text-[#2D2D2D] border border-[#D9D1C3]`;
+const LEVEL_TAG = `${TAG_CLASS} bg-[#ECA869]/20 text-[#2D2D2D] border border-[#ECA869]/40`;
+const REMOTE_TAG = `${TAG_CLASS} bg-[#FFF4E3] text-[#A8661F] border border-[#ECA869]`;
+
 const STATUS_LABELS = {
-  ouverte: { l: "Ouverte aux offres", c: "bg-[#1F4E3D] text-white" },
-  en_discussion: { l: "En discussion", c: "bg-[#ECA869] text-[#2D2D2D]" },
-  en_travail: { l: "En cours", c: "bg-[#C84B31] text-white" },
-  terminee: { l: "Terminée", c: "bg-[#6C6C6C] text-white" },
-  annulee: { l: "Annulée", c: "bg-[#D32F2F] text-white" },
+  ouverte: { l: "", c: "bg-[#1F4E3D] text-white", style: { background: "#EAF5EE", borderColor: "#1F4E3D", borderWidth: 2 } },
+  en_discussion: { l: "", c: "bg-[#1F4E3D] text-white", style: { background: "#EAF5EE", borderColor: "#1F4E3D", borderWidth: 2 } },
+  en_travail: { l: "En cours", c: "bg-[#1F4E3D] text-white", style: { background: "#EAF5EE", borderColor: "#1F4E3D", borderWidth: 2 } },
+  terminee: { l: "Terminée", c: "bg-[#ECA869] text-[#2D2D2D]", style: { background: "#FFF4E3", borderColor: "#ECA869", borderWidth: 2 } },
+  annulee: { l: "Fermé", c: "bg-[#D32F2F] text-white", style: { background: "#FFF1F1", borderColor: "#D32F2F", borderWidth: 2 } },
 };
 
 export default function MissionDetail() {
@@ -30,6 +51,8 @@ export default function MissionDetail() {
   const [reviewStars, setReviewStars] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState({});
 
   const isMerchant = user?.id === mission?.merchant_id;
   const isAssistant = user?.role === "assistant";
@@ -55,19 +78,54 @@ export default function MissionDetail() {
   if (!mission) return <div className="text-[#6C6C6C]">Chargement...</div>;
 
   const status = STATUS_LABELS[mission.status] || { l: mission.status, c: "bg-gray-200" };
-  const budget = mission.budget_min_fcfa && mission.budget_max_fcfa
-    ? `${fmtFCFA(mission.budget_min_fcfa)} – ${fmtFCFA(mission.budget_max_fcfa)}`
-    : mission.budget_min_fcfa
-      ? `À partir de ${fmtFCFA(mission.budget_min_fcfa)}`
-      : mission.budget_max_fcfa
-        ? `Jusqu'à ${fmtFCFA(mission.budget_max_fcfa)}`
+  const budget = (mission.budget_min_fcfa != null && mission.budget_max_fcfa != null)
+    ? (mission.budget_min_fcfa === mission.budget_max_fcfa
+      ? fmtFCFA(mission.budget_min_fcfa)
+      : fmtFCFA(mission.budget_min_fcfa) + " – " + fmtFCFA(mission.budget_max_fcfa))
+    : mission.budget_min_fcfa != null
+      ? "À partir de " + fmtFCFA(mission.budget_min_fcfa)
+      : mission.budget_max_fcfa != null
+        ? "<" + formatCompactBudget(mission.budget_max_fcfa) + " FCFA"
         : "Budget à discuter";
 
   const cancel = async () => {
-    if (!window.confirm("Annuler définitivement cette mission ?")) return;
+    if (!window.confirm("Fermer cette mission ?")) return;
     await api.post(`/missions/${id}/cancel`);
-    toast.success("Mission annulée");
+    toast.success("Mission fermée");
     load();
+  };
+
+  const openEdit = () => {
+    setEditForm({
+      title: mission.title || "",
+      type: mission.type || "autre",
+      location: mission.location || "Lomé",
+      description: mission.description || "",
+      budget_min_fcfa: mission.budget_min_fcfa ?? "",
+      budget_max_fcfa: mission.budget_max_fcfa ?? "",
+      contract_type: mission.contract_type || "ponctuelle",
+      level: mission.level || "intermediaire",
+      remote_ok: Boolean(mission.remote_ok),
+    });
+    setEditOpen(true);
+  };
+
+  const saveEdit = async (e) => {
+    e.preventDefault();
+    const payload = { ...editForm };
+    payload.budget_min_fcfa = payload.budget_min_fcfa === "" ? null : Number(payload.budget_min_fcfa);
+    payload.budget_max_fcfa = payload.budget_max_fcfa === "" ? null : Number(payload.budget_max_fcfa);
+    await api.put(`/missions/${id}`, payload);
+    toast.success("Mission modifiée");
+    setEditOpen(false);
+    load();
+  };
+
+  const deleteMission = async () => {
+    if (!window.confirm("Supprimer définitivement cette mission ?")) return;
+    await api.delete(`/missions/${id}`);
+    toast.success("Mission supprimée");
+    navigate("/app/missions");
   };
 
   const complete = async () => {
@@ -105,23 +163,24 @@ export default function MissionDetail() {
     <div className="space-y-4" data-testid="mission-detail-page">
       <Link to="/app/missions" className="text-sm text-[#6C6C6C]" data-testid="back-link">← Retour</Link>
 
-      <div className="card-flat p-5">
-        <div className="flex items-start justify-between gap-3">
+      <div className="card-flat p-5" style={status.style}>
+        <div className="space-y-3">
           <div className="min-w-0">
-            <h1 className="font-['Manrope'] font-extrabold text-2xl">{mission.title}</h1>
+            <h1 className="font-['Manrope'] font-extrabold text-2xl leading-tight">{mission.title}</h1>
             <div className="text-sm text-[#6C6C6C] mt-1">
               Par <strong>{mission.merchant_shop || mission.merchant_name}</strong>
             </div>
             <div className="flex items-center gap-3 text-xs text-[#6C6C6C] mt-2 flex-wrap">
               <span className="capitalize bg-[#EAE5D9] px-2 py-0.5 rounded-full">{mission.type?.replace(/_/g, " ")}</span>
               <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3" /> {mission.location}</span>
-              <span className="flex items-center gap-0.5"><Clock className="w-3 h-3" /> {mission.duration_hours}h</span>
-              {mission.remote_ok && <span className="text-[#1F4E3D] font-semibold">Télétravail OK</span>}
-              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${status.c}`}>{status.l}</span>
+              <span className={CONTRACT_TAG}>{CONTRACT_LABELS[mission.contract_type] || mission.contract_type}</span>
+              <span className={LEVEL_TAG}>{LEVEL_LABELS[mission.level] || mission.level}</span>
+              {mission.remote_ok && <span className={REMOTE_TAG}>Télétravail</span>}
+              {status.l && <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${status.c}`}>{status.l}</span>}
             </div>
           </div>
-          <div className="text-right shrink-0">
-            <div className="font-['Manrope'] font-extrabold text-lg text-[#C84B31]">{budget}</div>
+          <div className="pt-1">
+            <div className="font-['Manrope'] font-extrabold text-lg text-[#C84B31] break-words">{budget}</div>
             {mission.agreed_price_fcfa && (
               <div className="text-xs text-[#1F4E3D] mt-1">
                 Prix convenu : {fmtFCFA(mission.agreed_price_fcfa)} ({mission.agreed_delivery_days}j)
@@ -133,8 +192,22 @@ export default function MissionDetail() {
 
         {/* Merchant actions */}
         {isMerchant && ["ouverte", "en_discussion"].includes(mission.status) && (
-          <Button onClick={cancel} variant="outline" data-testid="cancel-mission-btn" className="mt-4">
-            <XCircle className="w-4 h-4 mr-1" /> Annuler la mission
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <Button onClick={openEdit} variant="outline" data-testid="edit-mission-btn">
+              <Edit2 className="w-4 h-4 mr-1" /> Modifier
+            </Button>
+            <Button onClick={cancel} variant="outline" data-testid="cancel-mission-btn">
+              <XCircle className="w-4 h-4 mr-1" /> Fermer la mission
+            </Button>
+            <Button onClick={deleteMission} variant="outline" data-testid="delete-mission-btn" className="text-[#D32F2F] border-[#D32F2F]/30 hover:bg-[#D32F2F]/10">
+              <Trash2 className="w-4 h-4 mr-1" /> Supprimer
+            </Button>
+          </div>
+        )}
+
+        {isMerchant && mission.status === "annulee" && (
+          <Button onClick={deleteMission} variant="outline" data-testid="delete-mission-btn" className="mt-4 text-[#D32F2F] border-[#D32F2F]/30 hover:bg-[#D32F2F]/10">
+            <Trash2 className="w-4 h-4 mr-1" /> Supprimer
           </Button>
         )}
 
@@ -187,6 +260,75 @@ export default function MissionDetail() {
           )
         )}
       </div>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Modifier la mission</DialogTitle></DialogHeader>
+          <form onSubmit={saveEdit} className="space-y-3" data-testid="edit-mission-form">
+            <div>
+              <Label>Titre</Label>
+              <Input value={editForm.title || ""} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} required />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Type</Label>
+                <select value={editForm.type || "autre"} onChange={(e) => setEditForm({ ...editForm, type: e.target.value })} className="h-10 w-full rounded-md border border-[#EAE5D9] bg-white px-3 text-sm">
+                  <option value="caisse">Point de caisse</option>
+                  <option value="inventaire">Inventaire stock</option>
+                  <option value="audit">Audit / Rapport</option>
+                  <option value="fiscal">Fiscal / TVA</option>
+                  <option value="paie">Paie</option>
+                  <option value="creation_entreprise">Création d'entreprise</option>
+                  <option value="autre">Autre</option>
+                </select>
+              </div>
+              <div>
+                <Label>Ville</Label>
+                <Input value={editForm.location || ""} onChange={(e) => setEditForm({ ...editForm, location: e.target.value })} required />
+              </div>
+            </div>
+            <div>
+              <Label>Description</Label>
+              <Textarea rows={4} value={editForm.description || ""} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} required />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Prix minimum</Label>
+                <Input type="number" value={editForm.budget_min_fcfa ?? ""} onChange={(e) => setEditForm({ ...editForm, budget_min_fcfa: e.target.value })} />
+              </div>
+              <div>
+                <Label>Prix maximum</Label>
+                <Input type="number" value={editForm.budget_max_fcfa ?? ""} onChange={(e) => setEditForm({ ...editForm, budget_max_fcfa: e.target.value })} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Type de contrat</Label>
+                <select value={editForm.contract_type || "ponctuelle"} onChange={(e) => setEditForm({ ...editForm, contract_type: e.target.value })} className="h-10 w-full rounded-md border border-[#EAE5D9] bg-white px-3 text-sm">
+                  <option value="ponctuelle">Mission ponctuelle</option>
+                  <option value="saisonnier">Renfort saisonnier</option>
+                  <option value="stage">Stage professionnel</option>
+                  <option value="cdd">CDD</option>
+                  <option value="cdi">CDI</option>
+                </select>
+              </div>
+              <div>
+                <Label>Niveau</Label>
+                <select value={editForm.level || "intermediaire"} onChange={(e) => setEditForm({ ...editForm, level: e.target.value })} className="h-10 w-full rounded-md border border-[#EAE5D9] bg-white px-3 text-sm">
+                  <option value="junior">Junior</option>
+                  <option value="intermediaire">Intermédiaire</option>
+                  <option value="senior">Senior</option>
+                </select>
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-sm font-semibold text-[#2D2D2D]">
+              <input type="checkbox" checked={Boolean(editForm.remote_ok)} onChange={(e) => setEditForm({ ...editForm, remote_ok: e.target.checked })} />
+              Télétravail autorisé
+            </label>
+            <Button type="submit" className="w-full h-11 bg-[#C84B31] hover:bg-[#A83E28] text-white rounded-xl">Enregistrer</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Offer form (assistant) */}
       {canOffer && <OfferForm missionId={id} existingOffer={mission.my_offer} onSaved={load} />}
@@ -277,7 +419,7 @@ function OfferForm({ missionId, existingOffer, onSaved }) {
       </h2>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <Label>Prix proposé (FCFA)</Label>
+          <Label>Prix proposé (FCFA) <span className="text-[#C84B31]">*</span></Label>
           <Input
             type="number"
             value={form.price_fcfa}
@@ -290,7 +432,7 @@ function OfferForm({ missionId, existingOffer, onSaved }) {
           />
         </div>
         <div>
-          <Label>Délai (jours)</Label>
+          <Label>Délai (jours) <span className="text-[#C84B31]">*</span></Label>
           <Input
             type="number"
             value={form.delivery_days}
@@ -303,7 +445,7 @@ function OfferForm({ missionId, existingOffer, onSaved }) {
         </div>
       </div>
       <div>
-        <Label>Message de présentation</Label>
+        <Label>Message de présentation <span className="text-[#C84B31]">*</span></Label>
         <Textarea
           rows={3}
           value={form.message}
@@ -338,7 +480,7 @@ function OfferCard({ offer, canSelect, isOwn, onSelect, onOpenChat }) {
 
   return (
     <div className="card-flat p-4" data-testid={`offer-${offer.id}`}>
-      <div className="flex items-start justify-between gap-3">
+      <div className="space-y-3">
         <div className="min-w-0">
           <div className="font-['Manrope'] font-bold flex items-center gap-2">
             {offer.assistant_name}
@@ -350,7 +492,7 @@ function OfferCard({ offer, canSelect, isOwn, onSelect, onOpenChat }) {
             {offer.assistant_rating || "Nouveau"}
           </div>
         </div>
-        <div className="text-right shrink-0">
+        <div className="pt-1">
           <div className="font-['Manrope'] font-bold text-[#C84B31]">{fmtFCFA(offer.price_fcfa)}</div>
           <div className="text-xs text-[#6C6C6C]">{offer.delivery_days} jour{offer.delivery_days > 1 ? "s" : ""}</div>
         </div>

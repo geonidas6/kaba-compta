@@ -37,7 +37,7 @@ export default function AdminKyc() {
         <h1 className="font-['Manrope'] font-extrabold text-3xl mt-1 flex items-center gap-2">
           <ShieldCheck className="w-7 h-7 text-[#1F4E3D]" /> Vérifications KYC
         </h1>
-        <p className="text-sm text-[#6C6C6C] mt-2">Examinez les documents et approuvez les assistants comptables.</p>
+        <p className="text-sm text-[#6C6C6C] mt-2">Examinez les documents et approuvez les comptables.</p>
       </div>
 
       {items.length === 0 && (

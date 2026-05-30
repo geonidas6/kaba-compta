@@ -39,7 +39,7 @@ export default function ForumNewQuestion() {
 
       <form onSubmit={submit} className="card-flat p-5 space-y-4" data-testid="question-form">
         <div>
-          <Label>Titre clair</Label>
+          <Label>Titre clair <span className="text-[#C84B31]">*</span></Label>
           <Input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -51,7 +51,7 @@ export default function ForumNewQuestion() {
           />
         </div>
         <div>
-          <Label>Détails (Markdown supporté)</Label>
+          <Label>Détails de votre question <span className="text-[#C84B31]">*</span></Label>
           <Textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}

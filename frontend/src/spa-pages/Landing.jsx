@@ -17,7 +17,6 @@ import {
   Clock
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import FreeAppBanner from "@/components/FreeAppBanner";
 import { api } from "@/lib/api";
 
 export default function Landing() {
@@ -44,7 +43,6 @@ export default function Landing() {
 
   return (
     <div className="min-h-screen bg-[#FAF8F5] text-[#2D2D2D]">
-      <FreeAppBanner variant="hero" />
       {/* Header */}
       <header className="sticky top-0 z-30 bg-[#FAF8F5]/95 backdrop-blur border-b border-[#EAE5D9]">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
@@ -138,7 +136,7 @@ export default function Landing() {
                   {loading ? "..." : data.freelance_count}
                 </div>
                 <div className="text-xs text-[#6C6C6C] font-semibold uppercase tracking-wider mt-0.5">
-                  Assistants comptables
+                  Comptables
                 </div>
               </div>
             </div>

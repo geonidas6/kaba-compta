@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Literal
+from typing import Any, Dict, List, Optional, Literal
 
 Role = Literal["merchant", "assistant", "admin"]
 MISSION_STATUSES = ("ouverte", "en_discussion", "en_travail", "terminee", "annulee")
@@ -32,6 +32,12 @@ class UserPublic(BaseModel):
     city: Optional[str] = None
     avatar_url: Optional[str] = None
     bio: Optional[str] = None
+    education_level: Optional[str] = "Licence"
+    skills: List[str] = Field(default_factory=list)
+    languages: List[Any] = Field(default_factory=list)
+    experiences: List[Dict[str, Any]] = Field(default_factory=list)
+    formations: List[Dict[str, Any]] = Field(default_factory=list)
+    references: List[Dict[str, Any]] = Field(default_factory=list)
     kyc_status: Optional[str] = None
     is_premium: bool = False
     rating_avg: float = 0.0
@@ -48,6 +54,12 @@ class ProfileUpdate(BaseModel):
     city: Optional[str] = None
     bio: Optional[str] = None
     avatar_url: Optional[str] = None
+    education_level: Optional[str] = None
+    skills: Optional[List[str]] = None
+    languages: Optional[List[Any]] = None
+    experiences: Optional[List[Dict[str, Any]]] = None
+    formations: Optional[List[Dict[str, Any]]] = None
+    references: Optional[List[Dict[str, Any]]] = None
 
 class MissionCreate(BaseModel):
     title: str

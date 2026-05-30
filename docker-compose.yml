@@ -16,8 +16,17 @@ services:
       - db
     expose:
       - "8000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.kaba-compta-api.rule=Host(`${DOMAIN_API}`) && (PathPrefix(`/api`) || PathPrefix(`/uploads`))"
+      - "traefik.http.routers.kaba-compta-api.priority=100"
+      - "traefik.http.routers.kaba-compta-api.entrypoints=websecure"
+      - "traefik.http.routers.kaba-compta-api.tls.certresolver=myresolver"
+      - "traefik.http.services.kaba-compta-api.loadbalancer.server.port=8000"
+      - "traefik.docker.network=proxy_net"
     networks:
       - backend
+      - proxy_net
 
   db:
     image: mongo:latest
@@ -47,6 +56,16 @@ services:
       - ./frontend/.env
     expose:
       - "3000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.kaba-compta-web.rule=Host(`${LANDING_DOMAIN_URL}`)"
+      - "traefik.http.routers.kaba-compta-web.priority=1"
+      - "traefik.http.routers.kaba-compta-web.entrypoints=websecure"
+      - "traefik.http.routers.kaba-compta-web.tls.certresolver=myresolver"
+      - "traefik.http.services.kaba-compta-web.loadbalancer.server.port=3000"
+      - "traefik.docker.network=proxy_net"
+    networks:
+      - proxy_net
 
   mongoexpress:
     image: mongo-express:latest
@@ -62,11 +81,21 @@ services:
       ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_PASSWORD}
     expose:
       - "8081"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.kaba-compta-db.rule=Host(`${DB_MANAGER_URL}`)"
+      - "traefik.http.routers.kaba-compta-db.entrypoints=websecure"
+      - "traefik.http.routers.kaba-compta-db.tls.certresolver=myresolver"
+      - "traefik.http.services.kaba-compta-db.loadbalancer.server.port=8081"
+      - "traefik.docker.network=proxy_net"
     networks:
       - backend
+      - proxy_net
 
 volumes:
   fazgom_mongo_data:
 
 networks:
   backend:
+  proxy_net:
+    external: true
