@@ -7,6 +7,7 @@ import {
   Briefcase,
   Settings,
   LogOut,
+  UserCircle,
   Shield,
   ListChecks,
   Megaphone,
@@ -14,6 +15,7 @@ import {
   Menu,
   X,
   MessageSquare,
+  BellRing,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
@@ -24,8 +26,10 @@ const tabs = [
   { to: "/admin/missions", icon: Briefcase, label: "Missions" },
   { to: "/admin/forum-reports", icon: MessageSquare, label: "Gestion du Forum" },
   { to: "/admin/broadcast", icon: Megaphone, label: "Diffusion WhatsApp" },
+  { to: "/admin/notification-templates", icon: BellRing, label: "Modèles notifications" },
   { to: "/admin/audit", icon: ListChecks, label: "Journal d'audit" },
   { to: "/admin/settings", icon: Settings, label: "Paramètres" },
+  { to: "/admin/profile", icon: UserCircle, label: "Mon profil" },
 ];
 
 export default function AdminLayout() {

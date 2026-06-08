@@ -85,6 +85,7 @@ async def conversations(user: dict = Depends(get_current_user)):
         out.append({
             "offer_id": o["id"],
             "mission_id": o["mission_id"],
+            "mission_slug": m.get("slug"),
             "mission_title": m.get("title"),
             "mission_status": m.get("status"),
             "merchant_name": user_names.get(m["merchant_id"], m.get("merchant_name") or "Marchand"),

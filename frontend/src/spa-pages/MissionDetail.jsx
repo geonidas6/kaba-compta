@@ -62,6 +62,9 @@ export default function MissionDetail() {
   const load = async () => {
     const r = await api.get(`/missions/${id}`);
     setMission(r.data);
+    if (r.data?.slug && r.data.slug !== id) {
+      navigate(`/app/missions/${r.data.slug}`, { replace: true });
+    }
     if (r.data.merchant_id === user.id || user.role === "admin") {
       const aps = await api.get(`/missions/${id}/offers`);
       setOffers(aps.data);
@@ -147,7 +150,7 @@ export default function MissionDetail() {
     e.preventDefault();
     try {
       await api.post("/reviews", {
-        mission_id: id,
+        mission_id: mission.id,
         stars: reviewStars,
         comment: reviewComment,
       });

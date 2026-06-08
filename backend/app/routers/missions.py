@@ -4,9 +4,12 @@ from fastapi import APIRouter, HTTPException, Depends
 
 from app.database import db
 from app.models import MissionCreate, MissionUpdate, OfferCreate, MISSION_STATUSES
-from app.helpers import get_current_user, now_iso, notify_user
+from app.helpers import get_current_user, now_iso, notify_user, ensure_unique_mission_slug
 
 router = APIRouter(tags=["missions"])
+
+async def resolve_mission(identifier: str) -> dict | None:
+    return await db.missions.find_one({"$or": [{"id": identifier}, {"slug": identifier}]}, {"_id": 0})
 
 @router.post("/missions")
 async def mission_create(data: MissionCreate, user: dict = Depends(get_current_user)):
@@ -14,6 +17,7 @@ async def mission_create(data: MissionCreate, user: dict = Depends(get_current_u
         raise HTTPException(status_code=403, detail="Réservé aux marchands")
     m = {
         "id": str(uuid.uuid4()),
+        "slug": await ensure_unique_mission_slug(data.title.strip()),
         "merchant_id": user["id"],
         "merchant_name": user.get("display_name") or user.get("shop_name") or "Marchand",
         "merchant_shop": user.get("shop_name"),
@@ -60,62 +64,80 @@ async def mission_list(
             {"description": {"$regex": q, "$options": "i"}},
         ]
     items = await db.missions.find(flt, {"_id": 0}).sort("created_at", -1).to_list(500)
+    if user["role"] == "assistant" and items:
+        mission_ids = [item["id"] for item in items]
+        offers = await db.offers.find(
+            {"assistant_id": user["id"], "mission_id": {"$in": mission_ids}},
+            {"_id": 0, "mission_id": 1},
+        ).to_list(500)
+        offered_ids = {offer["mission_id"] for offer in offers}
+        for item in items:
+            item["has_my_offer"] = (
+                item["id"] in offered_ids
+                or user["id"] in (item.get("offer_assistant_ids") or [])
+            )
     return items
 
 @router.get("/missions/{mission_id}")
 async def mission_get(mission_id: str, user: dict = Depends(get_current_user)):
-    m = await db.missions.find_one({"id": mission_id}, {"_id": 0})
+    m = await resolve_mission(mission_id)
     if not m:
         raise HTTPException(status_code=404, detail="Mission introuvable")
+    resolved_mission_id = m["id"]
     # Attach own offer if assistant
     if user["role"] == "assistant":
         own = await db.offers.find_one(
-            {"mission_id": mission_id, "assistant_id": user["id"]},
+            {"mission_id": resolved_mission_id, "assistant_id": user["id"]},
             {"_id": 0}
         )
         m["my_offer"] = own
     
     # Check if user has already reviewed
-    rev = await db.reviews.find_one({"mission_id": mission_id, "from_user_id": user["id"]})
+    rev = await db.reviews.find_one({"mission_id": resolved_mission_id, "from_user_id": user["id"]})
     m["user_has_reviewed"] = True if rev else False
     return m
 
 @router.put("/missions/{mission_id}")
 async def mission_update(mission_id: str, data: MissionUpdate, user: dict = Depends(get_current_user)):
-    m = await db.missions.find_one({"id": mission_id}, {"_id": 0})
+    m = await resolve_mission(mission_id)
     if not m:
         raise HTTPException(status_code=404, detail="Mission introuvable")
+    resolved_mission_id = m["id"]
     if m["merchant_id"] != user["id"]:
         raise HTTPException(status_code=403, detail="Non autorisé")
     if m["status"] not in ("ouverte", "en_discussion"):
         raise HTTPException(status_code=400, detail="Mission non modifiable")
     update = data.model_dump(exclude_unset=True)
+    if "title" in update:
+        update["slug"] = await ensure_unique_mission_slug(update["title"], resolved_mission_id)
     update["updated_at"] = now_iso()
-    await db.missions.update_one({"id": mission_id}, {"$set": update})
-    fresh = await db.missions.find_one({"id": mission_id}, {"_id": 0})
+    await db.missions.update_one({"id": resolved_mission_id}, {"$set": update})
+    fresh = await db.missions.find_one({"id": resolved_mission_id}, {"_id": 0})
     return fresh
 
 @router.delete("/missions/{mission_id}")
 async def mission_delete(mission_id: str, user: dict = Depends(get_current_user)):
-    m = await db.missions.find_one({"id": mission_id}, {"_id": 0})
+    m = await resolve_mission(mission_id)
     if not m or m["merchant_id"] != user["id"]:
         raise HTTPException(status_code=403, detail="Non autorisé")
+    resolved_mission_id = m["id"]
     if m["status"] not in ("ouverte", "en_discussion", "annulee"):
         raise HTTPException(status_code=400, detail="Mission non supprimable")
-    await db.missions.delete_one({"id": mission_id})
-    await db.offers.delete_many({"mission_id": mission_id})
-    await db.messages.delete_many({"mission_id": mission_id})
+    await db.missions.delete_one({"id": resolved_mission_id})
+    await db.offers.delete_many({"mission_id": resolved_mission_id})
+    await db.messages.delete_many({"mission_id": resolved_mission_id})
     return {"deleted": True}
 
 @router.post("/missions/{mission_id}/cancel")
 async def mission_cancel(mission_id: str, user: dict = Depends(get_current_user)):
-    m = await db.missions.find_one({"id": mission_id}, {"_id": 0})
+    m = await resolve_mission(mission_id)
     if not m or m["merchant_id"] != user["id"]:
         raise HTTPException(status_code=403, detail="Non autorisé")
+    resolved_mission_id = m["id"]
     if m["status"] in ("terminee", "annulee"):
         raise HTTPException(status_code=400, detail="Mission déjà clôturée")
     await db.missions.update_one(
-        {"id": mission_id},
+        {"id": resolved_mission_id},
         {"$set": {"status": "annulee", "updated_at": now_iso()}}
     )
     # Notify selected assistant if any
@@ -128,13 +150,14 @@ async def mission_cancel(mission_id: str, user: dict = Depends(get_current_user)
 
 @router.post("/missions/{mission_id}/complete")
 async def mission_complete(mission_id: str, user: dict = Depends(get_current_user)):
-    m = await db.missions.find_one({"id": mission_id}, {"_id": 0})
+    m = await resolve_mission(mission_id)
     if not m or m["merchant_id"] != user["id"]:
         raise HTTPException(status_code=403, detail="Non autorisé")
+    resolved_mission_id = m["id"]
     if m["status"] != "en_travail":
         raise HTTPException(status_code=400, detail="La mission doit être en cours")
     await db.missions.update_one(
-        {"id": mission_id},
+        {"id": resolved_mission_id},
         {"$set": {"status": "terminee", "completed_at": now_iso(), "updated_at": now_iso()}}
     )
     if m.get("selected_assistant_id"):
@@ -155,15 +178,16 @@ async def offer_create_or_update(mission_id: str, data: OfferCreate, user: dict 
             status_code=403,
             detail="Vous devez obligatoirement valider votre KYC (identité et diplôme) avant de pouvoir proposer vos services."
         )
-    m = await db.missions.find_one({"id": mission_id}, {"_id": 0})
+    m = await resolve_mission(mission_id)
     if not m:
         raise HTTPException(status_code=404, detail="Mission introuvable")
+    resolved_mission_id = m["id"]
     if m["status"] not in ("ouverte", "en_discussion"):
         raise HTTPException(status_code=400, detail="Mission non ouverte aux offres")
     if user["id"] == m["merchant_id"]:
         raise HTTPException(status_code=400, detail="Vous ne pouvez pas proposer une offre sur votre propre mission")
 
-    existing = await db.offers.find_one({"mission_id": mission_id, "assistant_id": user["id"]}, {"_id": 0})
+    existing = await db.offers.find_one({"mission_id": resolved_mission_id, "assistant_id": user["id"]}, {"_id": 0})
 
     if existing:
         # Push current values to history then update
@@ -194,7 +218,7 @@ async def offer_create_or_update(mission_id: str, data: OfferCreate, user: dict 
     # New offer
     offer = {
         "id": str(uuid.uuid4()),
-        "mission_id": mission_id,
+        "mission_id": resolved_mission_id,
         "assistant_id": user["id"],
         "assistant_name": user.get("display_name"),
         "assistant_rating": user.get("rating_avg", 0),
@@ -211,9 +235,9 @@ async def offer_create_or_update(mission_id: str, data: OfferCreate, user: dict 
     update_doc: dict = {"$inc": {"offers_count": 1}, "$set": {"updated_at": now_iso()}}
     if m["status"] == "ouverte":
         update_doc["$set"]["status"] = "en_discussion"
-    await db.missions.update_one({"id": mission_id}, update_doc)
+    await db.missions.update_one({"id": resolved_mission_id}, update_doc)
     await db.missions.update_one(
-        {"id": mission_id},
+        {"id": resolved_mission_id},
         {"$addToSet": {"offer_assistant_ids": user["id"]}}
     )
     await notify_user(
@@ -226,11 +250,12 @@ async def offer_create_or_update(mission_id: str, data: OfferCreate, user: dict 
 
 @router.get("/missions/{mission_id}/offers")
 async def offer_list(mission_id: str, user: dict = Depends(get_current_user)):
-    m = await db.missions.find_one({"id": mission_id}, {"_id": 0})
+    m = await resolve_mission(mission_id)
     if not m:
         raise HTTPException(status_code=404, detail="Mission introuvable")
+    resolved_mission_id = m["id"]
     if user["role"] == "merchant" and m["merchant_id"] == user["id"]:
-        offers = await db.offers.find({"mission_id": mission_id}, {"_id": 0}).sort([
+        offers = await db.offers.find({"mission_id": resolved_mission_id}, {"_id": 0}).sort([
             ("assistant_is_premium", -1),
             ("assistant_rating", -1),
             ("created_at", 1),
@@ -238,10 +263,10 @@ async def offer_list(mission_id: str, user: dict = Depends(get_current_user)):
         return offers
     # Assistants only see their own offer; admins see all
     if user["role"] == "admin":
-        offers = await db.offers.find({"mission_id": mission_id}, {"_id": 0}).to_list(500)
+        offers = await db.offers.find({"mission_id": resolved_mission_id}, {"_id": 0}).to_list(500)
         return offers
     own = await db.offers.find_one(
-        {"mission_id": mission_id, "assistant_id": user["id"]},
+        {"mission_id": resolved_mission_id, "assistant_id": user["id"]},
         {"_id": 0}
     )
     return [own] if own else []
@@ -276,16 +301,17 @@ async def offer_withdraw(offer_id: str, user: dict = Depends(get_current_user)):
 
 @router.post("/missions/{mission_id}/select-offer/{offer_id}")
 async def mission_select_offer(mission_id: str, offer_id: str, user: dict = Depends(get_current_user)):
-    m = await db.missions.find_one({"id": mission_id}, {"_id": 0})
+    m = await resolve_mission(mission_id)
     if not m or m["merchant_id"] != user["id"]:
         raise HTTPException(status_code=403, detail="Non autorisé")
+    resolved_mission_id = m["id"]
     if m["status"] not in ("ouverte", "en_discussion"):
         raise HTTPException(status_code=400, detail="Mission déjà attribuée")
-    o = await db.offers.find_one({"id": offer_id, "mission_id": mission_id}, {"_id": 0})
+    o = await db.offers.find_one({"id": offer_id, "mission_id": resolved_mission_id}, {"_id": 0})
     if not o:
         raise HTTPException(status_code=404, detail="Offre introuvable")
 
-    await db.missions.update_one({"id": mission_id}, {"$set": {
+    await db.missions.update_one({"id": resolved_mission_id}, {"$set": {
         "status": "en_travail",
         "selected_offer_id": offer_id,
         "selected_assistant_id": o["assistant_id"],
@@ -296,7 +322,7 @@ async def mission_select_offer(mission_id: str, offer_id: str, user: dict = Depe
     }})
     await db.offers.update_one({"id": offer_id}, {"$set": {"status": "selected"}})
     await db.offers.update_many(
-        {"mission_id": mission_id, "id": {"$ne": offer_id}},
+        {"mission_id": resolved_mission_id, "id": {"$ne": offer_id}},
         {"$set": {"status": "not_selected"}}
     )
     await notify_user(

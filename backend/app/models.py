@@ -16,6 +16,11 @@ class LoginRequest(BaseModel):
     phone: str
     password: str
 
+class LoginVerifyRequest(BaseModel):
+    challenge_id: str
+    code: str
+    method: Literal["totp", "whatsapp_otp"]
+
 class OTPSendRequest(BaseModel):
     phone: str
 
@@ -31,6 +36,7 @@ class UserPublic(BaseModel):
     shop_name: Optional[str] = None
     city: Optional[str] = None
     avatar_url: Optional[str] = None
+    public_slug: Optional[str] = None
     bio: Optional[str] = None
     education_level: Optional[str] = "Licence"
     skills: List[str] = Field(default_factory=list)
@@ -42,11 +48,19 @@ class UserPublic(BaseModel):
     is_premium: bool = False
     rating_avg: float = 0.0
     rating_count: int = 0
+    totp_enabled: bool = False
+    whatsapp_login_otp_enabled: bool = False
     created_at: str
 
 class AuthResponse(BaseModel):
-    token: str
-    user: UserPublic
+    token: Optional[str] = None
+    user: Optional[UserPublic] = None
+    requires_2fa: bool = False
+    challenge_id: Optional[str] = None
+    methods: List[str] = Field(default_factory=list)
+    phone: Optional[str] = None
+    dev_code: Optional[str] = None
+    channel: Optional[str] = None
 
 class ProfileUpdate(BaseModel):
     display_name: Optional[str] = None
@@ -60,6 +74,16 @@ class ProfileUpdate(BaseModel):
     experiences: Optional[List[Dict[str, Any]]] = None
     formations: Optional[List[Dict[str, Any]]] = None
     references: Optional[List[Dict[str, Any]]] = None
+
+class TwoFactorCodeRequest(BaseModel):
+    code: str
+
+class SecuritySettingsUpdate(BaseModel):
+    whatsapp_login_otp_enabled: Optional[bool] = None
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str
 
 class MissionCreate(BaseModel):
     title: str
@@ -148,6 +172,8 @@ class PlatformSettingsUpdate(BaseModel):
     whatsapp_verify_ssl: Optional[bool] = None
     notifications_enabled: Optional[bool] = None
     review_visibility_paywall: Optional[bool] = None
+    cronicle_url: Optional[str] = None
+    cronicle_api_key: Optional[str] = None
 
 class BroadcastRequest(BaseModel):
     audience: Literal["all_merchants", "all_assistants", "all_users", "user"]
@@ -157,3 +183,9 @@ class BroadcastRequest(BaseModel):
 class WhatsAppTestRequest(BaseModel):
     phone: str
     message: Optional[str] = None
+
+class NotificationTemplateUpdate(BaseModel):
+    title_template: Optional[str] = None
+    body_template: Optional[str] = None
+    whatsapp_template: Optional[str] = None
+    enabled: Optional[bool] = None

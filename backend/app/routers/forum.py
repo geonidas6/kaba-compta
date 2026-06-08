@@ -4,9 +4,15 @@ from fastapi import APIRouter, HTTPException, Depends
 
 from app.database import db
 from app.models import ForumQuestionCreate, ForumQuestionUpdate, ForumAnswerCreate, ForumAnswerUpdate, ForumReport, ForumReplyCreate, ForumReactRequest
-from app.helpers import get_current_user, now_iso, notify_user, create_in_app_notification
+from app.helpers import get_current_user, get_optional_user, now_iso, notify_user, create_in_app_notification, ensure_unique_forum_slug
 
 router = APIRouter(prefix="/forum", tags=["forum"])
+
+async def resolve_question(identifier: str, *, include_hidden: bool = False) -> dict | None:
+    flt = {"$or": [{"id": identifier}, {"slug": identifier}]}
+    if not include_hidden:
+        flt["is_hidden"] = False
+    return await db.forum_questions.find_one(flt, {"_id": 0})
 
 @router.post("/questions")
 async def forum_question_create(data: ForumQuestionCreate, user: dict = Depends(get_current_user)):
@@ -20,6 +26,7 @@ async def forum_question_create(data: ForumQuestionCreate, user: dict = Depends(
         "author_name": user.get("display_name"),
         "author_role": user["role"],
         "title": data.title.strip(),
+        "slug": await ensure_unique_forum_slug(data.title.strip()),
         "body": data.body.strip(),
         "tags": [t.strip().lower() for t in (data.tags or []) if t.strip()][:6],
         "votes": 0,
@@ -37,7 +44,7 @@ async def forum_question_create(data: ForumQuestionCreate, user: dict = Depends(
 
 @router.get("/questions")
 async def forum_question_list(
-    _: dict = Depends(get_current_user),
+    _: dict | None = Depends(get_optional_user),
     q: Optional[str] = None,
     tag: Optional[str] = None,
     sort: str = "recent",  # recent | top | unanswered
@@ -70,12 +77,13 @@ async def forum_question_list(
 
 
 @router.get("/questions/{q_id}")
-async def forum_question_get(q_id: str, user: dict = Depends(get_current_user)):
-    q = await db.forum_questions.find_one({"id": q_id}, {"_id": 0})
-    if not q or (q.get("is_hidden") and user.get("role") != "admin"):
+async def forum_question_get(q_id: str, user: dict | None = Depends(get_optional_user)):
+    q = await resolve_question(q_id, include_hidden=bool(user and user.get("role") == "admin"))
+    if not q or (q.get("is_hidden") and (not user or user.get("role") != "admin")) :
         raise HTTPException(status_code=404, detail="Question introuvable")
+    resolved_q_id = q["id"]
     answers = await db.forum_answers.find(
-        {"question_id": q_id, "is_hidden": False},
+        {"question_id": resolved_q_id, "is_hidden": False},
         {"_id": 0, "voters": 0}
     ).sort([("is_accepted", -1), ("votes", -1), ("created_at", 1)]).to_list(500)
 
@@ -105,63 +113,69 @@ async def forum_question_get(q_id: str, user: dict = Depends(get_current_user)):
         a["replies"] = replies
 
     q["answers"] = answers
-    q["user_vote"] = 1 if user["id"] in q.get("voters", []) else 0
+    q["user_vote"] = 1 if user and user["id"] in q.get("voters", []) else 0
     q.pop("voters", None)
     return q
 
 @router.put("/questions/{q_id}")
 async def forum_question_update(q_id: str, data: ForumQuestionUpdate, user: dict = Depends(get_current_user)):
-    q = await db.forum_questions.find_one({"id": q_id}, {"_id": 0})
+    q = await resolve_question(q_id, include_hidden=True)
     if not q:
         raise HTTPException(status_code=404, detail="Introuvable")
+    resolved_q_id = q["id"]
     if q["author_id"] != user["id"] and user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Non autorisé")
     update = {k: v for k, v in data.model_dump().items() if v is not None}
     if "tags" in update:
         update["tags"] = [t.strip().lower() for t in update["tags"] if t.strip()][:6]
+    if "title" in update:
+        update["slug"] = await ensure_unique_forum_slug(update["title"], resolved_q_id)
     update["updated_at"] = now_iso()
-    await db.forum_questions.update_one({"id": q_id}, {"$set": update})
-    fresh = await db.forum_questions.find_one({"id": q_id}, {"_id": 0})
+    await db.forum_questions.update_one({"id": resolved_q_id}, {"$set": update})
+    fresh = await db.forum_questions.find_one({"id": resolved_q_id}, {"_id": 0})
     return fresh
 
 @router.delete("/questions/{q_id}")
 async def forum_question_delete(q_id: str, user: dict = Depends(get_current_user)):
-    q = await db.forum_questions.find_one({"id": q_id}, {"_id": 0})
+    q = await resolve_question(q_id, include_hidden=True)
     if not q:
         raise HTTPException(status_code=404, detail="Introuvable")
+    resolved_q_id = q["id"]
     if q["author_id"] != user["id"] and user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Non autorisé")
-    await db.forum_questions.delete_one({"id": q_id})
-    await db.forum_answers.delete_many({"question_id": q_id})
+    await db.forum_questions.delete_one({"id": resolved_q_id})
+    await db.forum_answers.delete_many({"question_id": resolved_q_id})
     return {"deleted": True}
 
 @router.post("/questions/{q_id}/vote")
 async def forum_question_vote(q_id: str, user: dict = Depends(get_current_user)):
-    q = await db.forum_questions.find_one({"id": q_id}, {"_id": 0})
+    q = await resolve_question(q_id)
     if not q:
         raise HTTPException(status_code=404, detail="Introuvable")
+    resolved_q_id = q["id"]
     if user["id"] in q.get("voters", []):
         # Toggle off
         await db.forum_questions.update_one(
-            {"id": q_id},
+            {"id": resolved_q_id},
             {"$pull": {"voters": user["id"]}, "$inc": {"votes": -1}}
         )
         return {"voted": False}
     await db.forum_questions.update_one(
-        {"id": q_id},
+        {"id": resolved_q_id},
         {"$addToSet": {"voters": user["id"]}, "$inc": {"votes": 1}}
     )
     return {"voted": True}
 
 @router.post("/questions/{q_id}/report")
 async def forum_question_report(q_id: str, data: ForumReport, user: dict = Depends(get_current_user)):
-    q = await db.forum_questions.find_one({"id": q_id}, {"_id": 0})
+    q = await resolve_question(q_id)
     if not q:
         raise HTTPException(status_code=404, detail="Introuvable")
+    resolved_q_id = q["id"]
     report = {
         "id": str(uuid.uuid4()),
         "target_type": "question",
-        "target_id": q_id,
+        "target_id": resolved_q_id,
         "reporter_id": user["id"],
         "reporter_name": user.get("display_name"),
         "reason": data.reason,
@@ -169,19 +183,20 @@ async def forum_question_report(q_id: str, data: ForumReport, user: dict = Depen
         "created_at": now_iso(),
     }
     await db.forum_reports.insert_one(report)
-    await db.forum_questions.update_one({"id": q_id}, {"$inc": {"report_count": 1}})
+    await db.forum_questions.update_one({"id": resolved_q_id}, {"$inc": {"report_count": 1}})
     return {"reported": True}
 
 @router.post("/questions/{q_id}/answers")
 async def forum_answer_create(q_id: str, data: ForumAnswerCreate, user: dict = Depends(get_current_user)):
-    q = await db.forum_questions.find_one({"id": q_id}, {"_id": 0})
+    q = await resolve_question(q_id)
     if not q or q.get("is_hidden"):
         raise HTTPException(status_code=404, detail="Question introuvable")
+    resolved_q_id = q["id"]
     if not data.body or len(data.body.strip()) < 5:
         raise HTTPException(status_code=400, detail="Réponse trop courte")
     ans = {
         "id": str(uuid.uuid4()),
-        "question_id": q_id,
+        "question_id": resolved_q_id,
         "author_id": user["id"],
         "author_name": user.get("display_name"),
         "author_role": user["role"],
@@ -196,7 +211,7 @@ async def forum_answer_create(q_id: str, data: ForumAnswerCreate, user: dict = D
     }
     await db.forum_answers.insert_one(ans)
     await db.forum_questions.update_one(
-        {"id": q_id},
+        {"id": resolved_q_id},
         {"$inc": {"answers_count": 1}, "$set": {"updated_at": now_iso()}}
     )
     # Notify question author
@@ -213,8 +228,8 @@ async def forum_answer_create(q_id: str, data: ForumAnswerCreate, user: dict = D
             actor_id=user["id"],
             actor_name=user.get("display_name"),
             entity_type="forum_question",
-            entity_id=q_id,
-            link=f"/app/forum/{q_id}",
+            entity_id=resolved_q_id,
+            link=f"/app/forum/{q.get('slug') or resolved_q_id}",
         )
     ans.pop("_id", None)
     return ans
@@ -306,7 +321,7 @@ async def forum_answer_report(a_id: str, data: ForumReport, user: dict = Depends
     return {"reported": True}
 
 @router.get("/tags")
-async def forum_tags(_: dict = Depends(get_current_user)):
+async def forum_tags(_: dict | None = Depends(get_optional_user)):
     """Top tags used in the forum."""
     pipeline = [
         {"$match": {"is_hidden": False}},
@@ -337,12 +352,13 @@ def toggle_reaction_dict(reactions_dict: dict, user_id: str, emoji: str) -> dict
 
 @router.post("/questions/{q_id}/react")
 async def forum_question_react(q_id: str, data: ForumReactRequest, user: dict = Depends(get_current_user)):
-    q = await db.forum_questions.find_one({"id": q_id})
+    q = await resolve_question(q_id)
     if not q:
         raise HTTPException(status_code=404, detail="Question introuvable")
+    resolved_q_id = q["id"]
     reactions = q.get("reactions") or {}
     reactions = toggle_reaction_dict(reactions, user["id"], data.emoji)
-    await db.forum_questions.update_one({"id": q_id}, {"$set": {"reactions": reactions}})
+    await db.forum_questions.update_one({"id": resolved_q_id}, {"$set": {"reactions": reactions}})
     if q.get("author_id") != user["id"]:
         await create_in_app_notification(
             q["author_id"],
@@ -352,8 +368,8 @@ async def forum_question_react(q_id: str, data: ForumReactRequest, user: dict = 
             actor_id=user["id"],
             actor_name=user.get("display_name"),
             entity_type="forum_question",
-            entity_id=q_id,
-            link=f"/app/forum/{q_id}",
+            entity_id=resolved_q_id,
+            link=f"/app/forum/{q.get('slug') or resolved_q_id}",
         )
     return {"reactions": reactions}
 
@@ -366,6 +382,8 @@ async def forum_answer_react(a_id: str, data: ForumReactRequest, user: dict = De
     reactions = toggle_reaction_dict(reactions, user["id"], data.emoji)
     await db.forum_answers.update_one({"id": a_id}, {"$set": {"reactions": reactions}})
     if a.get("author_id") != user["id"]:
+        q = await db.forum_questions.find_one({"id": a.get("question_id")}, {"_id": 0, "id": 1, "slug": 1})
+        question_link_id = (q.get("slug") if q else None) or a.get("question_id")
         await create_in_app_notification(
             a["author_id"],
             "forum_reaction",
@@ -375,7 +393,7 @@ async def forum_answer_react(a_id: str, data: ForumReactRequest, user: dict = De
             actor_name=user.get("display_name"),
             entity_type="forum_answer",
             entity_id=a_id,
-            link=f"/app/forum/{a.get('question_id')}",
+            link=f"/app/forum/{question_link_id}",
         )
     return {"reactions": reactions}
 
@@ -417,7 +435,7 @@ async def forum_answer_reply(a_id: str, data: ForumReplyCreate, user: dict = Dep
                 actor_name=user.get("display_name"),
                 entity_type="forum_answer",
                 entity_id=a_id,
-                link=f"/app/forum/{a.get('question_id')}",
+                link=f"/app/forum/{q.get('slug') or a.get('question_id')}",
             )
             
     reply["author_avatar"] = user.get("avatar_url")

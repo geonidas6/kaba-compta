@@ -21,7 +21,7 @@ export default function ForumNewQuestion() {
       const tags = tagsInput.split(",").map((t) => t.trim()).filter(Boolean);
       const r = await api.post("/forum/questions", { title, body, tags });
       toast.success("Question publiée");
-      navigate(`/app/forum/${r.data.id}`);
+      navigate(`/app/forum/${r.data.slug || r.data.id}`);
     } catch (err) {
       toast.error(err?.response?.data?.detail || "Erreur");
     } finally {

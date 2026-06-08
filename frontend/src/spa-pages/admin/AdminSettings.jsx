@@ -20,8 +20,13 @@ export default function AdminSettings() {
     whatsapp_session_id: "default",
     whatsapp_verify_ssl: true,
     notifications_enabled: true,
+    cronicle_url: "",
+    cronicle_api_key: "",
   });
   const [saving, setSaving] = useState(false);
+  const [deployingCronicle, setDeployingCronicle] = useState(false);
+  const [cronicleResult, setCronicleResult] = useState(null);
+  const [cronicleConfirmOpen, setCronicleConfirmOpen] = useState(false);
   const [waTestPhone, setWaTestPhone] = useState("");
   const [waTesting, setWaTesting] = useState(false);
   const [waResult, setWaResult] = useState(null);
@@ -179,6 +184,8 @@ export default function AdminSettings() {
       whatsapp_session_id: r.data.platform.whatsapp_session_id || "default",
       whatsapp_verify_ssl: r.data.platform.whatsapp_verify_ssl ?? true,
       notifications_enabled: r.data.platform.notifications_enabled ?? true,
+      cronicle_url: r.data.platform.cronicle_url || "",
+      cronicle_api_key: "",
     });
   };
 
@@ -192,6 +199,7 @@ export default function AdminSettings() {
     try {
       const whatsappServiceUrl = pf.whatsapp_service_url.trim();
       const publicBackendUrl = pf.public_backend_url.trim();
+      const cronicleUrl = pf.cronicle_url.trim();
       if (whatsappServiceUrl && !/^https?:\/\//i.test(whatsappServiceUrl)) {
         toast.error("L'URL du service OpenWA doit commencer par http:// ou https://");
         setSaving(false);
@@ -210,10 +218,12 @@ export default function AdminSettings() {
         whatsapp_session_id: pf.whatsapp_session_id.trim() || "default",
         whatsapp_verify_ssl: pf.whatsapp_verify_ssl,
         notifications_enabled: pf.notifications_enabled,
+        cronicle_url: cronicleUrl,
       };
       if (pf.premium_price_fcfa !== "") payload.premium_price_fcfa = parseFloat(pf.premium_price_fcfa);
       if (pf.premium_duration_days !== "") payload.premium_duration_days = parseInt(pf.premium_duration_days, 10);
       if (pf.whatsapp_api_key) payload.whatsapp_api_key = pf.whatsapp_api_key.trim();
+      if (pf.cronicle_api_key) payload.cronicle_api_key = pf.cronicle_api_key.trim();
       await api.put("/admin/settings/platform", payload);
       toast.success("Paramètres enregistrés");
       await load();
@@ -221,6 +231,49 @@ export default function AdminSettings() {
       toast.error("Erreur");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveCronicleSettings = async () => {
+    setSaving(true);
+    try {
+      const payload = { cronicle_url: pf.cronicle_url.trim() };
+      if (pf.cronicle_api_key) payload.cronicle_api_key = pf.cronicle_api_key.trim();
+      await api.put("/admin/settings/platform", payload);
+      toast.success("Paramètres Cronicle enregistrés");
+      await load();
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Erreur lors de l'enregistrement Cronicle");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const redeployCronicle = async () => {
+    setDeployingCronicle(true);
+    setCronicleResult(null);
+    try {
+      const r = await api.post("/admin/cronicle/redeploy");
+      setCronicleResult(r.data);
+      setCronicleConfirmOpen(false);
+      const errors = r.data.errors?.length || 0;
+      if (errors) {
+        toast.error(`Cronicle terminé avec ${errors} erreur(s)`);
+      } else {
+        toast.success(`${r.data.created?.length || 0} tâche(s) Cronicle recréée(s)`);
+      }
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      const message = typeof detail === "string" ? detail : detail?.message || "Erreur Cronicle";
+      setCronicleResult({
+        deleted: [],
+        created: [],
+        errors: [{ message }],
+        requests: detail?.request ? [detail.request] : detail?.requests || [],
+      });
+      toast.error("Erreur Cronicle. Consultez le détail dans la carte.");
+    } finally {
+      setDeployingCronicle(false);
     }
   };
 
@@ -506,6 +559,138 @@ export default function AdminSettings() {
         </Button>
       </form>
 
+
+
+      <div className="card-flat p-5 space-y-4" data-testid="cronicle-jobs-card">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-2">
+            <RefreshCw className="w-5 h-5 text-[#1F4E3D]" />
+            <h2 className="font-['Manrope'] font-bold text-lg">Tâches Cronicle</h2>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              type="button"
+              onClick={saveCronicleSettings}
+              disabled={saving}
+              data-testid="cronicle-save-btn"
+              variant="outline"
+              className="border-[#1F4E3D] text-[#1F4E3D] hover:bg-[#1F4E3D]/5 rounded-full text-xs h-9"
+            >
+              {saving ? "Enregistrement..." : "Enregistrer Cronicle"}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => setCronicleConfirmOpen(true)}
+              disabled={deployingCronicle || !s?.platform?.cronicle_url || !s?.platform?.cronicle_api_key_set}
+              data-testid="cronicle-redeploy-btn"
+              className="bg-[#1F4E3D] hover:bg-[#163328] text-white rounded-full text-xs h-9"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 mr-1 ${deployingCronicle ? "animate-spin" : ""}`} />
+              {deployingCronicle ? "Déploiement..." : "Supprimer et recréer les tâches"}
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-3">
+          <div>
+            <Label>URL API Cronicle</Label>
+            <Input
+              value={pf.cronicle_url}
+              onChange={(e) => setPf({ ...pf, cronicle_url: e.target.value })}
+              className="h-11"
+              placeholder="http://cronicle:3012"
+              data-testid="cronicle-url-input"
+            />
+            <p className="text-xs text-[#6C6C6C] mt-1">Utilisez l'URL API accessible depuis le conteneur Kaba-Compta. Recommandé : http://cronicle:3012</p>
+          </div>
+          <div>
+            <Label>Token API Cronicle</Label>
+            <Input
+              type="password"
+              value={pf.cronicle_api_key}
+              onChange={(e) => setPf({ ...pf, cronicle_api_key: e.target.value })}
+              className="h-11 font-mono"
+              placeholder={s?.platform?.cronicle_api_key_set ? s.platform.cronicle_api_key_masked || "•••••" : "clé API Cronicle"}
+              autoComplete="off"
+              data-testid="cronicle-token-input"
+            />
+          </div>
+        </div>
+
+        {(!s?.platform?.cronicle_url || !s?.platform?.cronicle_api_key_set) && (
+          <div className="rounded-xl border border-[#ECA869]/50 bg-[#ECA869]/10 p-3 text-xs text-[#6C6C6C]">
+            Enregistrez d'abord l'URL Cronicle et le token API avant de lancer la création automatique des tâches.
+          </div>
+        )}
+
+        {cronicleConfirmOpen && (
+          <div className="rounded-xl border border-[#ECA869]/60 bg-[#FFF4E3] p-4" data-testid="cronicle-confirm-panel">
+            <div className="font-['Manrope'] font-bold text-[#2D2D2D]">Confirmer le redéploiement Cronicle</div>
+            <p className="text-xs text-[#6C6C6C] mt-1 max-w-3xl">
+              Cette action supprimera uniquement les tâches dont le nom commence par <strong>Kaba-Compta -</strong>, puis recréera les tâches planifiées de l'application. Les autres tâches Cronicle ne seront pas touchées.
+            </p>
+            <div className="flex items-center gap-2 mt-3 flex-wrap">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCronicleConfirmOpen(false)}
+                disabled={deployingCronicle}
+                className="rounded-full h-9 text-xs"
+              >
+                Annuler
+              </Button>
+              <Button
+                type="button"
+                onClick={redeployCronicle}
+                disabled={deployingCronicle}
+                data-testid="cronicle-confirm-redeploy-btn"
+                className="bg-[#1F4E3D] hover:bg-[#163328] text-white rounded-full text-xs h-9"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 mr-1 ${deployingCronicle ? "animate-spin" : ""}`} />
+                {deployingCronicle ? "Déploiement..." : "Confirmer et recréer"}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {cronicleResult && (
+          <div
+            className={`rounded-xl border overflow-hidden ${cronicleResult.errors?.length ? "border-[#C84B31]/40 bg-[#C84B31]/10" : "border-[#1F4E3D]/30 bg-[#1F4E3D]/10"}`}
+            data-testid="cronicle-result"
+          >
+            <div className={`px-3 py-2 text-xs font-bold border-b ${cronicleResult.errors?.length ? "border-[#C84B31]/20 text-[#C84B31]" : "border-[#1F4E3D]/20 text-[#1F4E3D]"}`}>
+              {cronicleResult.errors?.length ? "Cronicle terminé avec erreur" : "Tâches Cronicle recréées"}
+            </div>
+            <div className="p-3 grid sm:grid-cols-3 gap-2 text-xs">
+              <div className="rounded-lg bg-white/80 border border-black/10 p-3">
+                <div className="font-['Manrope'] font-extrabold text-xl text-[#1F4E3D]">{cronicleResult.created?.length || 0}</div>
+                <div className="text-[#6C6C6C] font-semibold">créée(s)</div>
+              </div>
+              <div className="rounded-lg bg-white/80 border border-black/10 p-3">
+                <div className="font-['Manrope'] font-extrabold text-xl text-[#1F4E3D]">{cronicleResult.deleted?.length || 0}</div>
+                <div className="text-[#6C6C6C] font-semibold">supprimée(s)</div>
+              </div>
+              <div className="rounded-lg bg-white/80 border border-black/10 p-3">
+                <div className={`font-['Manrope'] font-extrabold text-xl ${cronicleResult.errors?.length ? "text-[#C84B31]" : "text-[#1F4E3D]"}`}>{cronicleResult.errors?.length || 0}</div>
+                <div className="text-[#6C6C6C] font-semibold">erreur(s)</div>
+              </div>
+            </div>
+            {cronicleResult.requests?.length > 0 && (
+              <div className="px-3 pb-3">
+                <div className="font-['Manrope'] font-bold text-xs mb-2 text-[#2D2D2D]">Requête envoyée à Cronicle</div>
+                <pre className="overflow-x-auto rounded-lg bg-white/90 border border-black/10 p-2 text-xs text-[#2D2D2D] max-h-80">{prettyJson(cronicleResult.requests)}</pre>
+              </div>
+            )}
+            {cronicleResult.errors?.length > 0 && (
+              <div className="px-3 pb-3">
+                <div className="font-['Manrope'] font-bold text-xs mb-2 text-[#2D2D2D]">Détail de l'erreur</div>
+                <pre className="overflow-x-auto rounded-lg bg-white/90 border border-black/10 p-2 text-xs text-[#2D2D2D] max-h-64">{prettyJson(cronicleResult.errors)}</pre>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Dev Tools & Seed Data */}
       <div className="card-flat p-5 space-y-4">
         <div className="flex items-center gap-2">
@@ -566,6 +751,7 @@ export default function AdminSettings() {
         <p className="text-xs text-[#6C6C6C]">
           Sauvegarde complète au format ZIP comprenant la structure et les données de toutes les collections MongoDB (utilisateurs, paramètres, messages, KYC...) ainsi que les fichiers importés stockés localement.
         </p>
+
 
         <div className="border border-[#EAE5D9] rounded-xl overflow-hidden divide-y divide-[#EAE5D9]">
           {loadingBackups ? (

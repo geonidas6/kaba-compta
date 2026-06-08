@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Briefcase, Plus, MapPin, Search } from "lucide-react";
+import { Briefcase, Plus, MapPin, Search, CheckCircle2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -49,6 +49,7 @@ const STATUS_COLORS = {
 const CONTRACT_TAG = "inline-flex px-2 py-0.5 rounded-full bg-white/75 text-[#2D2D2D] border border-[#D9D1C3] text-xs font-semibold";
 const LEVEL_TAG = "inline-flex px-2 py-0.5 rounded-full bg-[#ECA869]/20 text-[#2D2D2D] border border-[#ECA869]/40 text-xs font-semibold";
 const REMOTE_TAG = "inline-flex px-2 py-0.5 rounded-full bg-[#FFF4E3] text-[#A8661F] border border-[#ECA869] text-xs font-semibold";
+const OFFER_SUBMITTED_TAG = "inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#1F4E3D] text-white border border-[#1F4E3D] text-xs font-semibold";
 
 export default function Missions() {
   const { user } = useAuth();
@@ -157,7 +158,7 @@ function MissionCard({ m, isMerchant }) {
         ? "<" + formatCompactBudget(m.budget_max_fcfa) + " FCFA"
         : "Budget à discuter";
   return (
-    <Link to={`/app/missions/${m.id}`} className="block card-flat p-4 transition hover:border-[#C84B31]" style={tone.style} data-testid={`mission-card-${m.id}`}>
+    <Link to={`/app/missions/${m.slug || m.id}`} className="block card-flat p-4 transition hover:border-[#C84B31]" style={tone.style} data-testid={`mission-card-${m.id}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="font-['Manrope'] font-bold">{m.title}</div>
@@ -174,6 +175,11 @@ function MissionCard({ m, isMerchant }) {
         <span className={CONTRACT_TAG}>{CONTRACT_LABELS[m.contract_type] || m.contract_type}</span>
         <span className={LEVEL_TAG}>{LEVEL_LABELS[m.level] || m.level}</span>
         {m.remote_ok && <span className={REMOTE_TAG}>Télétravail</span>}
+        {!isMerchant && m.has_my_offer && (
+          <span className={OFFER_SUBMITTED_TAG}>
+            <CheckCircle2 className="w-3 h-3" /> Offre déposée
+          </span>
+        )}
       </div>
       <p className="mt-3 text-sm text-[#2D2D2D]/85 line-clamp-2">{m.description}</p>
       <div className="flex items-center justify-between mt-2 text-xs text-[#6C6C6C]">

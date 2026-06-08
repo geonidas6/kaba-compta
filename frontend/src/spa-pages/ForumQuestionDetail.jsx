@@ -185,6 +185,9 @@ export default function ForumQuestionDetail() {
     try {
       const r = await api.get(`/forum/questions/${id}`);
       setQ(r.data);
+      if (r.data?.slug && r.data.slug !== id) {
+        navigate(user ? `/app/forum/${r.data.slug}` : `/forum/${r.data.slug}`, { replace: true });
+      }
     } catch {
       toast.error("Question introuvable");
       navigate("/app/forum");
@@ -198,34 +201,49 @@ export default function ForumQuestionDetail() {
 
   if (!q) return <div className="text-[#6C6C6C]">Chargement...</div>;
 
-  const isAuthor = user.id === q.author_id;
-  const isAdmin = user.role === "admin";
+  const requireLogin = () => {
+    if (user) return true;
+    toast.error("Connectez-vous pour effectuer cette action");
+    navigate("/auth");
+    return false;
+  };
 
-  const reportQ = () => setActionModal({
+  const isAuthor = user?.id === q.author_id;
+  const isAdmin = user?.role === "admin";
+
+  const reportQ = () => {
+    if (!requireLogin()) return;
+    setActionModal({
     kind: "report-question",
     title: "Signaler la question",
     description: "Votre signalement sera transmis aux modérateurs.",
     submitLabel: "Envoyer le signalement",
     values: { reason: "" },
   });
+  };
 
   const deleteQ = async () => {
+    if (!requireLogin()) return;
     if (!window.confirm("Supprimer la question (et toutes les réponses) ?")) return;
     await api.delete(`/forum/questions/${id}`);
     toast.success("Supprimé");
     navigate("/app/forum");
   };
 
-  const editQ = () => setActionModal({
+  const editQ = () => {
+    if (!requireLogin()) return;
+    setActionModal({
     kind: "edit-question",
     title: "Modifier la question",
     description: "Mettez à jour le titre, le contenu ou les tags.",
     submitLabel: "Enregistrer",
     values: { title: q.title, body: q.body, tagsText: (q.tags || []).join(", ") },
   });
+  };
 
   const submitAnswer = async (e) => {
     e.preventDefault();
+    if (!requireLogin()) return;
     if (answer.trim().length < 5) return toast.error("Réponse trop courte");
     setPosting(true);
     try {
@@ -240,7 +258,9 @@ export default function ForumQuestionDetail() {
     }
   };
 
-  const reportA = (aid) => setActionModal({
+  const reportA = (aid) => {
+    if (!requireLogin()) return;
+    setActionModal({
     kind: "report-answer",
     targetId: aid,
     title: "Signaler la réponse",
@@ -248,14 +268,18 @@ export default function ForumQuestionDetail() {
     submitLabel: "Envoyer le signalement",
     values: { reason: "" },
   });
+  };
 
   const deleteA = async (aid) => {
+    if (!requireLogin()) return;
     if (!window.confirm("Supprimer cette réponse ?")) return;
     await api.delete(`/forum/answers/${aid}`);
     load();
   };
 
-  const editA = (ans) => setActionModal({
+  const editA = (ans) => {
+    if (!requireLogin()) return;
+    setActionModal({
     kind: "edit-answer",
     targetId: ans.id,
     title: "Modifier la réponse",
@@ -263,8 +287,10 @@ export default function ForumQuestionDetail() {
     submitLabel: "Enregistrer",
     values: { body: ans.body },
   });
+  };
 
   const handleReact = async (type, targetId, subReplyId, emoji) => {
+    if (!requireLogin()) return;
     try {
       if (type === "question") {
         await api.post(`/forum/questions/${targetId}/react`, { emoji });
@@ -280,6 +306,7 @@ export default function ForumQuestionDetail() {
   };
 
   const submitReply = async (answerId, body) => {
+    if (!requireLogin()) return;
     try {
       await api.post(`/forum/answers/${answerId}/replies`, { body });
       toast.success("Commentaire ajouté");
@@ -351,7 +378,7 @@ export default function ForumQuestionDetail() {
 
   return (
     <div className="space-y-5" data-testid="question-detail-page">
-      <Link to="/app/forum" className="text-sm text-[#6C6C6C]" data-testid="back-to-forum">← Retour au forum</Link>
+      <Link to={user ? "/app/forum" : "/forum"} className="text-sm text-[#6C6C6C]" data-testid="back-to-forum">← Retour au forum</Link>
 
       {/* Question */}
       <div className="card-flat p-5">
@@ -434,7 +461,7 @@ export default function ForumQuestionDetail() {
                 targetId={id}
                 reactions={q.reactions}
                 onReact={handleReact}
-                userId={user.id}
+                userId={user?.id}
               />
               <div className="flex flex-wrap gap-2 text-xs w-full sm:w-auto sm:justify-end">
                 <button
@@ -511,7 +538,7 @@ export default function ForumQuestionDetail() {
                       targetId={a.id}
                       reactions={a.reactions}
                       onReact={handleReact}
-                      userId={user.id}
+                      userId={user?.id}
                     />
                     <div className="flex flex-wrap gap-2 text-xs w-full sm:w-auto sm:justify-end">
                       <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); reportA(a.id); }} className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#EAE5D9] bg-white px-3 text-xs font-bold text-[#6C6C6C] shadow-sm transition hover:border-[#C84B31]/40 hover:text-[#C84B31]">
@@ -565,7 +592,7 @@ export default function ForumQuestionDetail() {
                             subReplyId={reply.id}
                             reactions={reply.reactions}
                             onReact={handleReact}
-                            userId={user.id}
+                            userId={user?.id}
                           />
                         </div>
                       </div>

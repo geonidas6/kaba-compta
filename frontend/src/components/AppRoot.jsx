@@ -29,6 +29,8 @@ import AdminBroadcast from "@/spa-pages/admin/AdminBroadcast";
 import AdminUserDetail from "@/spa-pages/admin/AdminUserDetail";
 import AdminAuditLogs from "@/spa-pages/admin/AdminAuditLogs";
 import AdminSettings from "@/spa-pages/admin/AdminSettings";
+import AdminProfile from "@/spa-pages/admin/AdminProfile";
+import AdminNotificationTemplates from "@/spa-pages/admin/AdminNotificationTemplates";
 import AdminForumReports from "@/spa-pages/admin/AdminForumReports";
 import AdminForumQuestionDetail from "@/spa-pages/admin/AdminForumQuestionDetail";
 
@@ -53,6 +55,16 @@ function HomeRedirect() {
   return <Navigate to={user.role === "assistant" ? "/app/assistant" : "/app/dashboard"} replace />;
 }
 
+function PublicForumShell({ children }) {
+  return (
+    <div className="min-h-screen bg-[#FAF8F5]">
+      <main className="max-w-5xl w-full mx-auto px-4 py-4 pb-10">
+        {children}
+      </main>
+    </div>
+  );
+}
+
 export default function AppRoot() {
   return (
     <div className="App">
@@ -62,6 +74,8 @@ export default function AppRoot() {
           <Routes>
             <Route path="/" element={<HomeRedirect />} />
             <Route path="/auth" element={<AuthPage />} />
+            <Route path="/forum" element={<PublicForumShell><Forum /></PublicForumShell>} />
+            <Route path="/forum/:id" element={<PublicForumShell><ForumQuestionDetail /></PublicForumShell>} />
             <Route
               path="/app"
               element={
@@ -100,7 +114,9 @@ export default function AppRoot() {
               <Route path="forum-questions/:id" element={<AdminForumQuestionDetail />} />
               <Route path="audit" element={<AdminAuditLogs />} />
               <Route path="broadcast" element={<AdminBroadcast />} />
+              <Route path="notification-templates" element={<AdminNotificationTemplates />} />
               <Route path="settings" element={<AdminSettings />} />
+              <Route path="profile" element={<AdminProfile />} />
             </Route>
             <Route path="/u/:userId" element={<PublicProfile />} />
             <Route path="*" element={<Navigate to="/" replace />} />

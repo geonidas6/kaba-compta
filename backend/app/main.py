@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import JWT_SECRET, JWT_ALGORITHM, logger
 from app.database import db, client
-from app.helpers import hash_password, now_iso, normalize_phone
+from app.helpers import hash_password, now_iso, normalize_phone, ensure_unique_user_slug, public_profile_name, ensure_unique_forum_slug, ensure_unique_mission_slug
 from app.routers import auth, profile, missions, messages, reviews, forum, premium, admin, config_routes, notifications
 
 app = FastAPI(title="Kaba-Compta API", version="1.2.0")
@@ -150,7 +150,7 @@ async def startup_tasks():
         if existing:
             await db.users.update_one(
                 {"phone": phone},
-                {"$set": {"role": "admin", "password_hash": hash_password(admin_password)}},
+                {"$set": {"role": "admin", "password_hash": hash_password(admin_password)}, "$setOnInsert": {"totp_enabled": False, "whatsapp_login_otp_enabled": False}},
             )
             logger.info(f"[ADMIN] existing admin user ensured: {phone}")
         else:
@@ -163,16 +163,50 @@ async def startup_tasks():
                 "shop_name": None,
                 "city": "Lomé",
                 "avatar_url": None,
+                "public_slug": "administrateur",
                 "bio": "",
                 "kyc_status": "not_required",
                 "is_premium": False,
                 "rating_avg": 0.0,
                 "rating_count": 0,
                 "phone_verified": True,
+                "totp_enabled": False,
+                "whatsapp_login_otp_enabled": False,
                 "created_at": now_iso(),
             }
             await db.users.insert_one(doc)
             logger.info(f"[ADMIN] admin user seeded: {phone}")
+
+
+
+    # Ensure public profile slugs for old accounts
+    try:
+        cursor = db.users.find({"role": {"$in": ["merchant", "assistant"]}, "$or": [{"public_slug": {"$exists": False}}, {"public_slug": None}, {"public_slug": ""}]}, {"_id": 0})
+        async for u in cursor:
+            slug = await ensure_unique_user_slug(public_profile_name(u), u["id"])
+            await db.users.update_one({"id": u["id"]}, {"$set": {"public_slug": slug, "updated_at": now_iso()}})
+            logger.info(f"[MIGRATION] public slug set for {u['id']}: {slug}")
+    except Exception as e:
+        logger.warning(f"[MIGRATION] public slug migration failed: {e}")
+
+    # Ensure slugs for old forum questions and missions
+    try:
+        cursor = db.forum_questions.find({"$or": [{"slug": {"$exists": False}}, {"slug": None}, {"slug": ""}]}, {"_id": 0, "id": 1, "title": 1})
+        async for q in cursor:
+            slug = await ensure_unique_forum_slug(q.get("title") or "question", q["id"])
+            await db.forum_questions.update_one({"id": q["id"]}, {"$set": {"slug": slug, "updated_at": now_iso()}})
+            logger.info(f"[MIGRATION] forum slug set for {q['id']}: {slug}")
+    except Exception as e:
+        logger.warning(f"[MIGRATION] forum slug migration failed: {e}")
+
+    try:
+        cursor = db.missions.find({"$or": [{"slug": {"$exists": False}}, {"slug": None}, {"slug": ""}]}, {"_id": 0, "id": 1, "title": 1})
+        async for m in cursor:
+            slug = await ensure_unique_mission_slug(m.get("title") or "mission", m["id"])
+            await db.missions.update_one({"id": m["id"]}, {"$set": {"slug": slug, "updated_at": now_iso()}})
+            logger.info(f"[MIGRATION] mission slug set for {m['id']}: {slug}")
+    except Exception as e:
+        logger.warning(f"[MIGRATION] mission slug migration failed: {e}")
 
     # Drop legacy collections (cash/stock/credits/payments/payouts/applications/webhook_logs)
     legacy_collections = [

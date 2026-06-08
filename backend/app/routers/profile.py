@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 
 from app.database import db
 from app.models import ProfileUpdate, UserPublic
-from app.helpers import get_current_user, encrypt_bytes, decrypt_bytes, now_iso
+from app.helpers import get_current_user, encrypt_bytes, decrypt_bytes, now_iso, USER_PRIVATE_FIELDS, USER_PUBLIC_PRIVATE_FIELDS, ensure_unique_user_slug, public_profile_name
 
 router = APIRouter(tags=["profile"])
 
@@ -49,39 +49,40 @@ async def upload_avatar(
 async def update_profile(data: ProfileUpdate, user: dict = Depends(get_current_user)):
     update = {k: v for k, v in data.model_dump().items() if v is not None}
     if update:
+        if "display_name" in update or "shop_name" in update or not user.get("public_slug"):
+            merged = {**user, **update}
+            update["public_slug"] = await ensure_unique_user_slug(public_profile_name(merged), user["id"])
+        update["updated_at"] = now_iso()
         await db.users.update_one({"id": user["id"]}, {"$set": update})
-    fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0, "phone_verified": 0})
+    fresh = await db.users.find_one({"id": user["id"]}, USER_PRIVATE_FIELDS)
     return fresh
 
 @router.get("/users/{user_id}/public")
 async def user_public(user_id: str, _: dict = Depends(get_current_user)):
     u = await db.users.find_one(
         {"id": user_id},
-        {"_id": 0, "password_hash": 0, "phone": 0, "phone_verified": 0}
+        USER_PUBLIC_PRIVATE_FIELDS
     )
     if not u:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
     return u
 
+async def resolve_public_user(identifier: str):
+    u = await db.users.find_one(
+        {"$or": [{"public_slug": identifier}, {"id": identifier}]},
+        USER_PUBLIC_PRIVATE_FIELDS
+    )
+    return u
+
 @router.get("/users/{user_id}/public-profile")
 async def user_public_profile(user_id: str):
-    u = await db.users.find_one(
-        {"id": user_id},
-        {
-            "_id": 0,
-            "password_hash": 0,
-            "phone": 0,
-            "phone_verified": 0,
-            "admin_phone": 0,
-            "stripe_customer_id": 0,
-            "stripe_subscription_id": 0,
-        }
-    )
+    u = await resolve_public_user(user_id)
     if not u:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
     
+    resolved_user_id = u["id"]
     # Fetch user reviews
-    user_reviews = await db.reviews.find({"to_user_id": user_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    user_reviews = await db.reviews.find({"to_user_id": resolved_user_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
     
     # Calculate average rating
     avg_rating = 0.0
@@ -91,9 +92,9 @@ async def user_public_profile(user_id: str):
     # Missions count (completed)
     missions_count = 0
     if u.get("role") == "merchant":
-        missions_count = await db.missions.count_documents({"merchant_id": user_id, "status": "terminee"})
+        missions_count = await db.missions.count_documents({"merchant_id": resolved_user_id, "status": "terminee"})
     else:
-        missions_count = await db.missions.count_documents({"selected_assistant_id": user_id, "status": "terminee"})
+        missions_count = await db.missions.count_documents({"selected_assistant_id": resolved_user_id, "status": "terminee"})
         
     return {
         "user": u,

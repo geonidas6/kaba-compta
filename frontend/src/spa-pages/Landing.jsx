@@ -313,7 +313,7 @@ export default function Landing() {
                     </div>
 
                     <div className="pt-5 border-t border-[#EAE5D9]/40 mt-4">
-                      <Link to={`/auth?redirect=${encodeURIComponent(`/app/missions/${m.id}`)}`} className="block w-full">
+                      <Link to={`/auth?redirect=${encodeURIComponent(`/app/missions/${m.slug || m.id}`)}`} className="block w-full">
                         <Button className="w-full h-10 bg-[#1F4E3D] hover:bg-[#16372B] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer">
                           Proposer mes services <ArrowRight className="w-3.5 h-3.5" />
                         </Button>

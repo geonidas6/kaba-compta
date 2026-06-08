@@ -4,6 +4,7 @@ import { MessageSquare, Plus, MessageCircle, Search, Filter } from "lucide-react
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 const reactionCount = (reactions = {}) =>
   Object.values(reactions).reduce(
@@ -18,6 +19,7 @@ const SORTS = [
 ];
 
 export default function Forum() {
+  const { user } = useAuth();
   const [items, setItems] = useState([]);
   const [tags, setTags] = useState([]);
   const [tag, setTag] = useState("");
@@ -56,7 +58,7 @@ export default function Forum() {
             Posez vos questions, partagez votre expérience comptable et commerçante.
           </p>
         </div>
-        <Link to="/app/forum/new" className="shrink-0">
+        <Link to={user ? "/app/forum/new" : "/auth"} className="shrink-0">
           <Button data-testid="new-question-btn" className="bg-[#C84B31] hover:bg-[#A83E28] text-white rounded-full">
             <Plus className="w-4 h-4 mr-1" /> Question
           </Button>
@@ -129,7 +131,7 @@ export default function Forum() {
       <div className="space-y-2">
         {items.map((q) => (
           <Link
-            to={`/app/forum/${q.id}`}
+            to={user ? `/app/forum/${q.slug || q.id}` : `/forum/${q.slug || q.id}`}
             key={q.id}
             className="block card-flat p-4 hover:border-[#C84B31] transition"
             data-testid={`question-${q.id}`}

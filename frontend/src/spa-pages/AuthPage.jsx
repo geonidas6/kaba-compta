@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Store, GraduationCap, ArrowRight, Phone, Lock, MessageCircle } from "lucide-react";
+import { Store, GraduationCap, ArrowRight, Phone, Lock, MessageCircle, ShieldCheck, Smartphone } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
@@ -53,31 +53,117 @@ function LoginForm() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [challenge, setChallenge] = useState(null);
+  const [method, setMethod] = useState("totp");
+  const [code, setCode] = useState("");
   const { login } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+
+  const finishLogin = (token, user) => {
+    login(token, user);
+    toast.success(`Bienvenue ${user.display_name}`);
+    const redirectTo = searchParams.get("redirect");
+    if (redirectTo) {
+      navigate(redirectTo);
+    } else if (user.role === "admin") {
+      navigate("/admin/dashboard");
+    } else {
+      navigate(user.role === "assistant" ? "/app/assistant" : "/app/dashboard");
+    }
+  };
 
   const submit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
       const r = await api.post("/auth/login", { phone, password });
-      login(r.data.token, r.data.user);
-      toast.success(`Bienvenue ${r.data.user.display_name}`);
-      const redirectTo = searchParams.get("redirect");
-      if (redirectTo) {
-        navigate(redirectTo);
-      } else if (r.data.user.role === "admin") {
-        navigate("/admin/dashboard");
-      } else {
-        navigate(r.data.user.role === "assistant" ? "/app/assistant" : "/app/dashboard");
+      if (r.data.requires_2fa) {
+        const nextMethod = r.data.methods?.[0] || "totp";
+        setChallenge(r.data);
+        setMethod(nextMethod);
+        setCode("");
+        toast.info(nextMethod === "whatsapp_otp" ? "Code envoyé sur WhatsApp" : "Entrez le code de votre application d'authentification");
+        return;
       }
+      finishLogin(r.data.token, r.data.user);
     } catch (err) {
       toast.error(err?.response?.data?.detail || "Erreur de connexion");
     } finally {
       setLoading(false);
     }
   };
+
+  const verifyChallenge = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const r = await api.post("/auth/login/verify", {
+        challenge_id: challenge.challenge_id,
+        method,
+        code,
+      });
+      finishLogin(r.data.token, r.data.user);
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Code incorrect");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (challenge) {
+    const methods = challenge.methods || [];
+    return (
+      <form onSubmit={verifyChallenge} className="space-y-4" data-testid="login-2fa-form">
+        <div className="flex items-start gap-3">
+          <ShieldCheck className="w-10 h-10 text-[#1F4E3D]" />
+          <div>
+            <h1 className="font-['Manrope'] font-bold text-2xl">Vérification de sécurité</h1>
+            <p className="text-sm text-[#6C6C6C]">Un code est nécessaire pour terminer la connexion.</p>
+          </div>
+        </div>
+
+        {methods.length > 1 && (
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => setMethod("totp")} className={`rounded-xl border px-3 py-3 text-sm font-bold ${method === "totp" ? "border-[#1F4E3D] bg-[#1F4E3D] text-white" : "border-[#EAE5D9] bg-white text-[#2D2D2D]"}`}>
+              <ShieldCheck className="w-4 h-4 inline mr-1" /> Application
+            </button>
+            <button type="button" onClick={() => setMethod("whatsapp_otp")} className={`rounded-xl border px-3 py-3 text-sm font-bold ${method === "whatsapp_otp" ? "border-[#1F4E3D] bg-[#1F4E3D] text-white" : "border-[#EAE5D9] bg-white text-[#2D2D2D]"}`}>
+              <Smartphone className="w-4 h-4 inline mr-1" /> WhatsApp
+            </button>
+          </div>
+        )}
+
+        <div className="rounded-xl border border-[#EAE5D9] bg-white p-3 text-sm text-[#6C6C6C]">
+          {method === "whatsapp_otp"
+            ? "Saisissez le code reçu sur WhatsApp."
+            : "Ouvrez votre application d'authentification et saisissez le code à 6 chiffres."}
+        </div>
+
+
+        <div className="space-y-1.5">
+          <Label htmlFor="login-2fa-code">Code <span className="text-[#C84B31]">*</span></Label>
+          <Input
+            id="login-2fa-code"
+            data-testid="login-2fa-code-input"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            inputMode="numeric"
+            maxLength={6}
+            className="h-12 text-center font-mono text-xl tracking-widest"
+            required
+          />
+        </div>
+
+        <Button type="submit" disabled={loading} data-testid="login-2fa-submit-btn" className="w-full h-12 bg-[#C84B31] hover:bg-[#A83E28] text-white rounded-xl">
+          {loading ? "Vérification..." : "Valider et accéder"} <ArrowRight className="ml-2 w-4 h-4" />
+        </Button>
+        <button type="button" onClick={() => setChallenge(null)} className="w-full text-sm text-[#6C6C6C] hover:text-[#C84B31] py-2">
+          Revenir à la connexion
+        </button>
+      </form>
+    );
+  }
 
   return (
     <form onSubmit={submit} className="space-y-4" data-testid="login-form">

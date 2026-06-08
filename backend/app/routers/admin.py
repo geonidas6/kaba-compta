@@ -8,22 +8,161 @@ import shutil
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Literal
 
+import httpx
+
 import jwt as pyjwt
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from fastapi.responses import StreamingResponse, FileResponse
 
 from app.database import db
-from app.models import AdminUserUpdate, PlatformSettingsUpdate, BroadcastRequest, WhatsAppTestRequest
+from app.models import AdminUserUpdate, PlatformSettingsUpdate, BroadcastRequest, WhatsAppTestRequest, NotificationTemplateUpdate
 from app.config import JWT_SECRET, JWT_ALGORITHM, logger
 from app.helpers import (
     require_admin,
     decrypt_bytes,
     now_iso,
     normalize_phone,
-    get_platform_config
+    get_platform_config,
+    public_profile_name,
+    ensure_unique_user_slug,
+    ensure_unique_forum_slug,
+    ensure_unique_mission_slug,
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+CRONICLE_TITLE_PREFIX = "Kaba-Compta - "
+
+DEFAULT_NOTIFICATION_TEMPLATES = [
+    {"key": "otp_login", "label": "OTP connexion WhatsApp", "title_template": "Code de connexion", "body_template": "Votre code de connexion est {code}.", "whatsapp_template": "🔐 Votre code Kaba-Compta est : *{code}*\n\nCe code expire dans {expires_minutes} minutes. Ne le partagez avec personne."},
+    {"key": "otp_phone_verification", "label": "OTP vérification téléphone", "title_template": "Code de vérification", "body_template": "Votre code de vérification est {code}.", "whatsapp_template": "✅ Kaba-Compta : votre code de vérification est *{code}*\n\nIl expire dans {expires_minutes} minutes."},
+    {"key": "forum_answer", "label": "Réponse à une question", "title_template": "Nouvelle réponse", "body_template": "{actor_name} a répondu à votre question.", "whatsapp_template": "Kaba-Compta : {actor_name} a répondu à votre question."},
+    {"key": "forum_reaction", "label": "Réaction forum", "title_template": "Nouvelle réaction", "body_template": "{actor_name} a réagi à votre publication.", "whatsapp_template": "Kaba-Compta : {actor_name} a réagi à votre publication."},
+    {"key": "forum_reply", "label": "Commentaire sur réponse", "title_template": "Nouveau commentaire", "body_template": "{actor_name} a répondu à votre réponse.", "whatsapp_template": "Kaba-Compta : {actor_name} a répondu à votre réponse."},
+    {"key": "kyc_expired", "label": "KYC expiré", "title_template": "Document KYC expiré", "body_template": "{body}", "whatsapp_template": "{whatsapp_text}"},
+    {"key": "mission_no_offer", "label": "Mission sans offre", "title_template": "Aucune offre reçue", "body_template": "{body}", "whatsapp_template": "{whatsapp_text}"},
+    {"key": "mission_pending_selection", "label": "Offres en attente", "title_template": "Des offres attendent votre décision", "body_template": "{body}", "whatsapp_template": "{whatsapp_text}"},
+    {"key": "mission_deadline", "label": "Échéance mission", "title_template": "Mission bientôt à échéance", "body_template": "{body}", "whatsapp_template": "{whatsapp_text}"},
+    {"key": "mission_overdue", "label": "Mission en retard", "title_template": "Mission en retard", "body_template": "{body}", "whatsapp_template": "{whatsapp_text}"},
+    {"key": "forum_unanswered", "label": "Question sans réponse", "title_template": "Votre question attend une réponse", "body_template": "{body}", "whatsapp_template": "{whatsapp_text}"},
+    {"key": "forum_digest", "label": "Résumé forum comptables", "title_template": "Questions forum à aider", "body_template": "{body}", "whatsapp_template": "{whatsapp_text}"},
+    {"key": "daily_digest", "label": "Résumé quotidien", "title_template": "{title}", "body_template": "{body}", "whatsapp_template": "{whatsapp_text}"},
+]
+
+CRONICLE_JOBS = [
+    {
+        "key": "kyc_expiry",
+        "title": "KYC expiré",
+        "description": "Expire les KYC dont la pièce est périmée et notifie le comptable.",
+        "schedule": "Tous les jours à 02:00",
+        "command": "docker exec kaba-compta-api-1 python -m app.crons kyc_expiry",
+        "timing": {"hours": [2], "minutes": [0]},
+    },
+    {
+        "key": "mission_status_housekeeping",
+        "title": "Traitements missions",
+        "description": "Ferme les missions inactives, synchronise les offres et marque les retards.",
+        "schedule": "Toutes les heures",
+        "command": "docker exec kaba-compta-api-1 python -m app.crons mission_status_housekeeping",
+        "timing": {"minutes": [0]},
+    },
+    {
+        "key": "mission_notifications",
+        "title": "Notifications missions",
+        "description": "Notifie les missions sans offre, décisions en attente, échéances et retards.",
+        "schedule": "Toutes les 6 heures",
+        "command": "docker exec kaba-compta-api-1 python -m app.crons mission_notifications",
+        "timing": {"hours": [0, 6, 12, 18], "minutes": [0]},
+    },
+    {
+        "key": "forum_notifications",
+        "title": "Notifications forum",
+        "description": "Relance les questions sans réponse et notifie les signalements admin.",
+        "schedule": "Tous les jours à 10:00",
+        "command": "docker exec kaba-compta-api-1 python -m app.crons forum_notifications",
+        "timing": {"hours": [10], "minutes": [0]},
+    },
+
+    {
+        "key": "sitemap_generate",
+        "title": "Sitemap SEO",
+        "description": "Régénère le sitemap public avec les profils et les nouveaux sujets du forum.",
+        "schedule": "Toutes les 6 heures",
+        "command": "docker exec kaba-compta-api-1 python -m app.crons sitemap_generate",
+        "timing": {"hours": [0, 6, 12, 18], "minutes": [10]},
+    },
+    {
+        "key": "cleanup",
+        "title": "Nettoyage technique",
+        "description": "Supprime OTP expirés, notifications lues anciennes et vieux logs.",
+        "schedule": "Tous les jours à 03:00",
+        "command": "docker exec kaba-compta-api-1 python -m app.crons cleanup",
+        "timing": {"hours": [3], "minutes": [0]},
+    },
+    {
+        "key": "daily_digest",
+        "title": "Résumé quotidien",
+        "description": "Crée les résumés quotidiens marchand, comptable et admin.",
+        "schedule": "Tous les jours à 08:00",
+        "command": "docker exec kaba-compta-api-1 python -m app.crons daily_digest",
+        "timing": {"hours": [8], "minutes": [0]},
+    },
+]
+
+
+def normalize_cronicle_url(url: str) -> str:
+    url = (url or "").strip()
+    if url and not url.startswith(("http://", "https://")):
+        url = "https://" + url
+    url = url.rstrip("/")
+    if url.endswith("/api"):
+        url = url[:-4].rstrip("/")
+    return url
+
+
+def cronicle_json_response(response: httpx.Response, context: str, cronicle_url: str = "", request_info: Optional[dict] = None) -> dict:
+    try:
+        return response.json()
+    except ValueError:
+        content_type = response.headers.get("content-type", "")
+        received_html = "html" in content_type.lower() or (response.text or "").lstrip().lower().startswith("<!doctype html")
+        hint = "L'URL enregistrée semble pointer vers une page web, pas vers l'API Cronicle." if received_html else "Cronicle n'a pas renvoyé du JSON valide."
+        message = (
+            f"{hint} Vérifiez l'URL API Cronicle pendant {context}. "
+            "Exemple attendu: https://cronicle.it-sefako.com"
+            + (f". URL utilisée: {cronicle_url}" if cronicle_url else "")
+        )
+        raise HTTPException(
+            status_code=502,
+            detail={"message": message, "request": request_info},
+        )
+
+
+def cronicle_payload(job: dict) -> dict:
+    return {
+        "enabled": 1,
+        "title": CRONICLE_TITLE_PREFIX + job["title"],
+        "timezone": "Africa/Lome",
+        "category": "general",
+        "target": "allgrp",
+        "algo": "prefer_first",
+        "plugin": "shellplug",
+        "params": {
+            "script": "#!/bin/bash\n" + job["command"],
+            "annotate": 1,
+            "json": 1,
+        },
+        "timing": job["timing"],
+        "max_children": 1,
+        "timeout": 0,
+        "retries": 0,
+        "queue": 0,
+        "queue_max": 0,
+        "catch_up": 0,
+        "detached": 0,
+        "notes": job["description"],
+    }
+
 
 @router.get("/stats")
 async def admin_stats(_: dict = Depends(require_admin)):
@@ -71,7 +210,7 @@ async def admin_users_list(
             {"shop_name": {"$regex": q, "$options": "i"}},
             {"phone": {"$regex": q, "$options": "i"}},
         ]
-    users = await db.users.find(flt, {"_id": 0, "password_hash": 0}).sort("created_at", -1).to_list(500)
+    users = await db.users.find(flt, {"_id": 0, "password_hash": 0, "phone_verified": 0, "totp_secret": 0, "totp_pending_secret": 0}).sort("created_at", -1).to_list(500)
     return users
 
 @router.put("/users/{user_id}")
@@ -85,7 +224,7 @@ async def admin_user_update(user_id: str, data: AdminUserUpdate, _: dict = Depen
     res = await db.users.update_one({"id": user_id}, {"$set": update})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
-    fresh = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    fresh = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0, "phone_verified": 0, "totp_secret": 0, "totp_pending_secret": 0})
     return fresh
 
 @router.delete("/users/{user_id}")
@@ -114,7 +253,7 @@ async def admin_delete_user(user_id: str, _: dict = Depends(require_admin)):
 
 @router.post("/users/{user_id}/impersonate")
 async def admin_impersonate(user_id: str, admin: dict = Depends(require_admin)):
-    target = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    target = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0, "phone_verified": 0, "totp_secret": 0, "totp_pending_secret": 0})
     if not target:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
     if target.get("role") == "admin":
@@ -133,7 +272,7 @@ async def admin_impersonate(user_id: str, admin: dict = Depends(require_admin)):
 async def admin_kyc_pending(_: dict = Depends(require_admin)):
     assistants = await db.users.find(
         {"role": "assistant", "kyc_status": "pending"},
-        {"_id": 0, "password_hash": 0}
+        {"_id": 0, "password_hash": 0, "phone_verified": 0, "totp_secret": 0, "totp_pending_secret": 0}
     ).to_list(500)
     out = []
     for u in assistants:
@@ -178,6 +317,29 @@ async def admin_missions(_: dict = Depends(require_admin), status_f: Optional[st
     items = await db.missions.find(flt, {"_id": 0}).sort("created_at", -1).to_list(500)
     return items
 
+@router.get("/notification-templates")
+async def admin_notification_templates(_: dict = Depends(require_admin)):
+    existing = await db.notification_templates.find({}, {"_id": 0}).to_list(200)
+    by_key = {item["key"]: item for item in existing}
+    items = []
+    for default in DEFAULT_NOTIFICATION_TEMPLATES:
+        merged = {**default, **by_key.get(default["key"], {})}
+        merged.setdefault("enabled", True)
+        items.append(merged)
+    return items
+
+@router.put("/notification-templates/{key}")
+async def admin_notification_template_update(key: str, data: NotificationTemplateUpdate, admin: dict = Depends(require_admin)):
+    allowed = {item["key"] for item in DEFAULT_NOTIFICATION_TEMPLATES}
+    if key not in allowed:
+        raise HTTPException(status_code=404, detail="Modèle de notification introuvable")
+    update = {k: v for k, v in data.model_dump().items() if v is not None}
+    update.update({"key": key, "updated_at": now_iso(), "updated_by": admin["id"]})
+    await db.notification_templates.update_one({"key": key}, {"$set": update}, upsert=True)
+    fresh = await db.notification_templates.find_one({"key": key}, {"_id": 0})
+    return fresh
+
+
 @router.get("/settings")
 async def admin_settings_get(_: dict = Depends(require_admin)):
     platform = await db.app_settings.find_one({"_id": "platform"}) or {}
@@ -203,6 +365,10 @@ async def admin_settings_get(_: dict = Depends(require_admin)):
             "whatsapp_api_key_masked": mask(platform.get("whatsapp_api_key") or os.environ.get("WHATSAPP_API_KEY", "")),
             "whatsapp_verify_ssl": platform.get("whatsapp_verify_ssl", True),
             "notifications_enabled": platform.get("notifications_enabled", True),
+            "cronicle_url": platform.get("cronicle_url", os.environ.get("CRONICLE_URL", "")),
+            "cronicle_api_key_set": bool(platform.get("cronicle_api_key") or os.environ.get("CRONICLE_API_KEY", "")),
+            "cronicle_api_key_masked": mask(platform.get("cronicle_api_key") or os.environ.get("CRONICLE_API_KEY", "")),
+            "cronicle_jobs": CRONICLE_JOBS,
         }
     }
 
@@ -216,9 +382,105 @@ async def admin_settings_platform(data: PlatformSettingsUpdate, admin: dict = De
     await db.app_settings.update_one({"_id": "platform"}, {"$set": current}, upsert=True)
     return {"updated": True, "fields": list(update.keys())}
 
+@router.post("/cronicle/redeploy")
+async def admin_cronicle_redeploy(admin: dict = Depends(require_admin)):
+    platform = await db.app_settings.find_one({"_id": "platform"}) or {}
+    cronicle_url = normalize_cronicle_url(platform.get("cronicle_url") or os.environ.get("CRONICLE_URL", ""))
+    api_key = platform.get("cronicle_api_key") or os.environ.get("CRONICLE_API_KEY", "")
+    if not cronicle_url or not api_key:
+        raise HTTPException(status_code=400, detail="URL Cronicle et token API requis")
+
+    deleted = []
+    created = []
+    errors = []
+    requests = []
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as hc:
+            schedule_request = {
+                "action": "get_schedule",
+                "method": "GET",
+                "url": f"{cronicle_url}/api/app/get_schedule",
+                "params": {"api_key": "***", "offset": 0, "limit": 500},
+            }
+            requests.append(schedule_request)
+            schedule = await hc.get(
+                schedule_request["url"],
+                params={"api_key": api_key, "offset": 0, "limit": 500},
+            )
+            schedule.raise_for_status()
+            rows = cronicle_json_response(schedule, "la lecture du planning", cronicle_url, schedule_request).get("rows", [])
+            for row in rows:
+                title = row.get("title") or ""
+                event_id = row.get("id")
+                if not event_id or not title.startswith(CRONICLE_TITLE_PREFIX):
+                    continue
+                delete_request = {
+                    "action": "delete_event",
+                    "method": "POST",
+                    "url": f"{cronicle_url}/api/app/delete_event",
+                    "params": {"api_key": "***"},
+                    "json": {"id": event_id, "title": title},
+                }
+                requests.append(delete_request)
+                r = await hc.post(
+                    delete_request["url"],
+                    params={"api_key": api_key},
+                    json={"id": event_id},
+                )
+                if 200 <= r.status_code < 300:
+                    deleted.append({"id": event_id, "title": title})
+                else:
+                    errors.append({"action": "delete", "id": event_id, "title": title, "status": r.status_code, "body": r.text[:500]})
+
+            for job in CRONICLE_JOBS:
+                payload = cronicle_payload(job)
+                create_request = {
+                    "action": "create_event",
+                    "method": "POST",
+                    "url": f"{cronicle_url}/api/app/create_event",
+                    "params": {"api_key": "***"},
+                    "json": payload,
+                }
+                requests.append(create_request)
+                r = await hc.post(
+                    create_request["url"],
+                    params={"api_key": api_key},
+                    json=payload,
+                )
+                if 200 <= r.status_code < 300:
+                    data = cronicle_json_response(r, "la création d'une tâche", cronicle_url, create_request) if r.content else {}
+                    created.append({"title": payload["title"], "id": data.get("id")})
+                else:
+                    errors.append({"action": "create", "title": payload["title"], "status": r.status_code, "body": r.text[:500]})
+    except httpx.HTTPError as e:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": f"Erreur de communication avec Cronicle: {str(e)}",
+                "requests": requests,
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Cronicle redeploy failed")
+        raise HTTPException(status_code=500, detail=f"Erreur Cronicle: {str(e)}")
+
+    await db.audit_logs.insert_one({
+        "id": str(uuid.uuid4()),
+        "admin_id": admin["id"],
+        "action": "cronicle_redeploy",
+        "deleted_count": len(deleted),
+        "created_count": len(created),
+        "errors_count": len(errors),
+        "created_at": now_iso(),
+    })
+    return {"deleted": deleted, "created": created, "errors": errors, "jobs": CRONICLE_JOBS, "requests": requests}
+
+
 @router.get("/users/{user_id}/full")
 async def admin_user_full(user_id: str, _: dict = Depends(require_admin)):
-    u = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    u = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0, "phone_verified": 0, "totp_secret": 0, "totp_pending_secret": 0})
     if not u:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
 
@@ -814,6 +1076,7 @@ async def admin_generate_fake_data(admin: dict = Depends(require_admin)):
         
         pwd_hash = hash_password("password123")
         for m in merchants:
+            m["public_slug"] = await ensure_unique_user_slug(public_profile_name(m), m["id"])
             m.update({
                 "password_hash": pwd_hash,
                 "avatar_url": None,
@@ -837,6 +1100,7 @@ async def admin_generate_fake_data(admin: dict = Depends(require_admin)):
         ]
         
         for a in assistants:
+            a["public_slug"] = await ensure_unique_user_slug(public_profile_name(a), a["id"])
             a.update({
                 "password_hash": pwd_hash,
                 "avatar_url": None,
@@ -865,12 +1129,14 @@ async def admin_generate_fake_data(admin: dict = Depends(require_admin)):
             elif t["status"] == "en_discussion":
                 selected_assistant = assistants[1]["id"]
                 
+            mission_id = str(uuid.uuid4())
             m = {
-                "id": str(uuid.uuid4()),
+                "id": mission_id,
                 "merchant_id": merchant["id"],
                 "merchant_name": merchant.get("display_name") or merchant.get("shop_name") or "Marchand",
                 "merchant_shop": merchant.get("shop_name"),
                 "merchant_city": merchant.get("city"),
+                "slug": await ensure_unique_mission_slug(f"{t['title']} {merchant.get('shop_name') or merchant.get('display_name') or ''}", mission_id),
                 "title": t["title"],
                 "description": f"Besoin d'un assistant compétent pour : {t['title']}. Travail sérieux exigé.",
                 "type": t["type"],
@@ -928,6 +1194,7 @@ async def admin_generate_fake_data(admin: dict = Depends(require_admin)):
                 "author_id": author["id"],
                 "author_name": author["display_name"],
                 "author_role": author["role"],
+                "slug": await ensure_unique_forum_slug(q["title"], q_id),
                 "title": q["title"],
                 "body": f"Bonjour la communauté, j'aimerais avoir des explications claires concernant : {q['title']}. Merci d'avance.",
                 "tags": q["tags"],
@@ -959,8 +1226,20 @@ async def admin_generate_fake_data(admin: dict = Depends(require_admin)):
             question_doc["answers_count"] = answers_count
             await db.forum_questions.insert_one(question_doc)
 
+        from app.routers.config_routes import build_sitemap_xml
+
+        sitemap_xml = await build_sitemap_xml()
+        await db.app_settings.update_one(
+            {"_id": "sitemap_cache"},
+            {"$set": {"xml": sitemap_xml, "updated_at": now_iso()}},
+            upsert=True,
+        )
+
         logger.info(f"[DEV] Fake data generated successfully by admin={admin['id']}")
-        return {"message": "Données de test générées avec succès ! Les anciennes données ont été nettoyées."}
+        return {
+            "message": "Données de test générées avec succès ! Les anciennes données ont été nettoyées.",
+            "sitemap_regenerated": True,
+        }
     except Exception as e:
         logger.error(f"[DEV] generate-fake-data failed: {e}")
         raise HTTPException(status_code=500, detail=f"Erreur lors de la génération: {str(e)}")

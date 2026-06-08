@@ -2,6 +2,8 @@ import os
 import base64
 import logging
 import random
+import re
+import unicodedata
 import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import Optional
@@ -17,6 +19,71 @@ from app.config import JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRE_DAYS, KYC_KEY, logg
 from app.database import db
 
 security = HTTPBearer()
+optional_security = HTTPBearer(auto_error=False)
+
+USER_PRIVATE_FIELDS = {
+    "_id": 0,
+    "password_hash": 0,
+    "phone_verified": 0,
+    "totp_secret": 0,
+    "totp_pending_secret": 0,
+}
+
+USER_PUBLIC_PRIVATE_FIELDS = {
+    **USER_PRIVATE_FIELDS,
+    "phone": 0,
+    "admin_phone": 0,
+    "stripe_customer_id": 0,
+    "stripe_subscription_id": 0,
+}
+
+def public_user_doc(user: dict, *, hide_phone: bool = False) -> dict:
+    private = set(USER_PRIVATE_FIELDS)
+    if hide_phone:
+        private.update({"phone", "admin_phone", "stripe_customer_id", "stripe_subscription_id"})
+    return {k: v for k, v in user.items() if k not in private}
+
+
+def slugify(value: str) -> str:
+    value = unicodedata.normalize("NFKD", value or "").encode("ascii", "ignore").decode("ascii")
+    value = re.sub(r"[^a-zA-Z0-9]+", "-", value.lower()).strip("-")
+    return value or "utilisateur"
+
+async def ensure_unique_user_slug(base: str, user_id: Optional[str] = None) -> str:
+    root = slugify(base)[:70].strip("-") or "utilisateur"
+    slug = root
+    i = 2
+    while True:
+        existing = await db.users.find_one({"public_slug": slug}, {"_id": 0, "id": 1})
+        if not existing or existing.get("id") == user_id:
+            return slug
+        suffix = f"-{i}"
+        slug = (root[: 80 - len(suffix)].strip("-") or "utilisateur") + suffix
+        i += 1
+
+async def ensure_unique_collection_slug(collection_name: str, field: str, base: str, item_id: Optional[str] = None, fallback: str = "element") -> str:
+    root = slugify(base)[:70].strip("-") or fallback
+    slug = root
+    i = 2
+    collection = getattr(db, collection_name)
+    while True:
+        existing = await collection.find_one({field: slug}, {"_id": 0, "id": 1})
+        if not existing or existing.get("id") == item_id:
+            return slug
+        suffix = f"-{i}"
+        slug = (root[: 80 - len(suffix)].strip("-") or fallback) + suffix
+        i += 1
+
+async def ensure_unique_forum_slug(base: str, question_id: Optional[str] = None) -> str:
+    return await ensure_unique_collection_slug("forum_questions", "slug", base, question_id, "question")
+
+async def ensure_unique_mission_slug(base: str, mission_id: Optional[str] = None) -> str:
+    return await ensure_unique_collection_slug("missions", "slug", base, mission_id, "mission")
+
+def public_profile_name(user: dict) -> str:
+    if user.get("role") == "merchant":
+        return user.get("shop_name") or user.get("display_name") or "marchand"
+    return user.get("display_name") or "comptable"
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -48,11 +115,26 @@ def decode_token(token: str) -> dict:
 
 async def get_current_user(creds: HTTPAuthorizationCredentials = Depends(security)) -> dict:
     payload = decode_token(creds.credentials)
-    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
+    user = await db.users.find_one({"id": payload["sub"]}, USER_PRIVATE_FIELDS)
     if not user:
         raise HTTPException(status_code=401, detail="Utilisateur introuvable")
     if user.get("banned"):
         raise HTTPException(status_code=403, detail="Compte suspendu")
+    if payload.get("imp"):
+        user["_impersonator_id"] = payload["imp"]
+    return user
+
+
+async def get_optional_user(creds: Optional[HTTPAuthorizationCredentials] = Depends(optional_security)) -> Optional[dict]:
+    if not creds:
+        return None
+    try:
+        payload = decode_token(creds.credentials)
+        user = await db.users.find_one({"id": payload["sub"]}, USER_PRIVATE_FIELDS)
+    except HTTPException:
+        return None
+    if not user or user.get("banned"):
+        return None
     if payload.get("imp"):
         user["_impersonator_id"] = payload["imp"]
     return user
@@ -135,6 +217,38 @@ async def notify_user(user_id: str, text: str) -> None:
     if u and u.get("phone"):
         notify_async(u["phone"], text)
 
+
+def render_template_string(template: str, values: dict) -> str:
+    result = template or ""
+    for key, value in (values or {}).items():
+        result = result.replace("{" + str(key) + "}", str(value or ""))
+    return result
+
+async def apply_notification_template(
+    notif_type: str,
+    title: str,
+    body: str,
+    whatsapp_text: Optional[str] = None,
+    variables: Optional[dict] = None,
+) -> tuple[str, str, Optional[str], bool]:
+    template = await db.notification_templates.find_one({"key": notif_type}, {"_id": 0})
+    if not template:
+        return title, body, whatsapp_text, True
+    if template.get("enabled") is False:
+        return title, body, whatsapp_text, False
+    values = {
+        "title": title,
+        "body": body,
+        "whatsapp_text": whatsapp_text or body,
+        **(variables or {}),
+    }
+    return (
+        render_template_string(template.get("title_template") or title, values),
+        render_template_string(template.get("body_template") or body, values),
+        render_template_string(template.get("whatsapp_template") or whatsapp_text or body, values) if (template.get("whatsapp_template") or whatsapp_text) else None,
+        True,
+    )
+
 async def create_in_app_notification(
     user_id: str,
     notif_type: str,
@@ -147,6 +261,16 @@ async def create_in_app_notification(
     entity_id: Optional[str] = None,
     link: Optional[str] = None,
 ) -> dict:
+    variables = {
+        "actor_name": actor_name or "",
+        "actor_id": actor_id or "",
+        "entity_type": entity_type or "",
+        "entity_id": entity_id or "",
+        "link": link or "",
+    }
+    title, body, _, enabled = await apply_notification_template(notif_type, title, body, variables=variables)
+    if not enabled:
+        return {}
     doc = {
         "id": str(os.urandom(16).hex()),
         "user_id": user_id,

@@ -129,7 +129,7 @@ export default function AssistantDashboard() {
           <h2 className="font-['Manrope'] font-bold text-xl mb-3">Mes offres en cours</h2>
           <div className="space-y-2">
             {myOffers.slice(0, 5).map((o) => (
-              <Link to={`/app/missions/${o.mission_id}`} key={o.id} className="block card-flat p-3 hover:border-[#C84B31]">
+              <Link to={`/app/missions/${o.mission?.slug || o.mission_id}`} key={o.id} className="block card-flat p-3 hover:border-[#C84B31]">
                 <div className="flex items-center justify-between">
                   <div className="font-['Manrope'] font-bold truncate">{o.mission?.title || "Mission"}</div>
                   <div className="text-sm text-[#C84B31] font-bold">{fmtFCFA(o.price_fcfa)}</div>
@@ -178,7 +178,7 @@ function MissionCard({ m }) {
         ? "<" + formatCompactBudget(m.budget_max_fcfa) + " FCFA"
         : "Budget à discuter";
   return (
-    <Link to={`/app/missions/${m.id}`} className="block card-flat p-4 transition hover:border-[#C84B31]" style={tone.style} data-testid={`mission-card-${m.id}`}>
+    <Link to={`/app/missions/${m.slug || m.id}`} className="block card-flat p-4 transition hover:border-[#C84B31]" style={tone.style} data-testid={`mission-card-${m.id}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="font-['Manrope'] font-bold truncate">{m.title}</div>

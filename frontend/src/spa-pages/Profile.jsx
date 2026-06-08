@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Award, Briefcase, Calendar, Camera, Eye, FileText, Languages, Plus, ShieldCheck, Star, Trash2, Upload, User } from "lucide-react";
+import { Award, Briefcase, Calendar, Camera, Eye, FileText, KeyRound, Languages, Plus, ShieldCheck, Smartphone, Star, Trash2, Upload, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,6 +53,125 @@ function PeriodFields({ item, onChange }) {
         <input type="checkbox" checked={Boolean(item.current)} onChange={(e) => onChange({ ...item, current: e.target.checked, end_date: e.target.checked ? "" : item.end_date })} />
         En cours
       </label>
+    </div>
+  );
+}
+
+function SecuritySection({ user, refresh }) {
+  const [setup, setSetup] = useState(null);
+  const [totpCode, setTotpCode] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const updateWhatsappOtp = async (enabled) => {
+    setLoading(true);
+    try {
+      await api.put("/auth/security", { whatsapp_login_otp_enabled: enabled });
+      await refresh();
+      toast.success(enabled ? "OTP WhatsApp activé" : "OTP WhatsApp désactivé");
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Impossible de modifier ce réglage");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startTotpSetup = async () => {
+    setLoading(true);
+    try {
+      const r = await api.post("/auth/2fa/totp/setup");
+      setSetup(r.data);
+      setTotpCode("");
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Configuration impossible");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const enableTotp = async () => {
+    setLoading(true);
+    try {
+      await api.post("/auth/2fa/totp/enable", { code: totpCode });
+      await refresh();
+      setSetup(null);
+      setTotpCode("");
+      toast.success("Application d'authentification activée");
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Code incorrect");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const disableTotp = async () => {
+    setLoading(true);
+    try {
+      await api.post("/auth/2fa/totp/disable");
+      await refresh();
+      setSetup(null);
+      toast.success("Application d'authentification désactivée");
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Désactivation impossible");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="card-flat p-4" data-testid="profile-security-section">
+      <SectionTitle icon={ShieldCheck} title="Sécurité de connexion" />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div className="rounded-xl border border-[#EAE5D9] bg-white p-4 space-y-3">
+          <div className="flex items-start gap-3">
+            <Smartphone className="w-5 h-5 text-[#1F4E3D] mt-0.5" />
+            <div className="flex-1">
+              <div className="font-['Manrope'] font-bold">OTP par WhatsApp</div>
+              <p className="text-sm text-[#6C6C6C]">Recevoir un code WhatsApp à chaque connexion.</p>
+            </div>
+            <span className={`text-xs font-bold px-2 py-1 rounded-full ${user.whatsapp_login_otp_enabled ? "bg-[#1F4E3D] text-white" : "bg-[#EAE5D9] text-[#6C6C6C]"}`}>
+              {user.whatsapp_login_otp_enabled ? "Activé" : "Désactivé"}
+            </span>
+          </div>
+          <Button type="button" disabled={loading} variant={user.whatsapp_login_otp_enabled ? "outline" : "default"} onClick={() => updateWhatsappOtp(!user.whatsapp_login_otp_enabled)} className={user.whatsapp_login_otp_enabled ? "rounded-full" : "rounded-full bg-[#1F4E3D] hover:bg-[#163328] text-white"}>
+            {user.whatsapp_login_otp_enabled ? "Désactiver" : "Activer"}
+          </Button>
+        </div>
+
+        <div className="rounded-xl border border-[#EAE5D9] bg-white p-4 space-y-3">
+          <div className="flex items-start gap-3">
+            <KeyRound className="w-5 h-5 text-[#1F4E3D] mt-0.5" />
+            <div className="flex-1">
+              <div className="font-['Manrope'] font-bold">Application d'authentification</div>
+              <p className="text-sm text-[#6C6C6C]">Utiliser Google Authenticator, Microsoft Authenticator ou une application compatible.</p>
+            </div>
+            <span className={`text-xs font-bold px-2 py-1 rounded-full ${user.totp_enabled ? "bg-[#1F4E3D] text-white" : "bg-[#EAE5D9] text-[#6C6C6C]"}`}>
+              {user.totp_enabled ? "Activée" : "Désactivée"}
+            </span>
+          </div>
+
+          {setup && !user.totp_enabled && (
+            <div className="rounded-xl bg-[#FAF8F5] border border-[#EAE5D9] p-3 space-y-3">
+              <div className="flex flex-col sm:flex-row gap-3 items-start">
+                <img src={setup.qr_data_url} alt="QR code application d'authentification" className="w-36 h-36 rounded-lg border border-[#EAE5D9] bg-white" />
+                <div className="text-sm text-[#6C6C6C]">
+                  <p>Scannez ce QR code avec votre application, puis saisissez le code généré.</p>
+                  <p className="mt-2 font-mono text-xs break-all bg-white rounded-lg border border-[#EAE5D9] p-2">{setup.secret}</p>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Input value={totpCode} onChange={(e) => setTotpCode(e.target.value)} inputMode="numeric" maxLength={6} placeholder="Code à 6 chiffres" className="h-11 font-mono tracking-widest" />
+                <Button type="button" disabled={loading || totpCode.length < 6} onClick={enableTotp} className="bg-[#1F4E3D] hover:bg-[#163328] text-white rounded-full">Valider</Button>
+              </div>
+            </div>
+          )}
+
+          {user.totp_enabled ? (
+            <Button type="button" disabled={loading} variant="outline" onClick={disableTotp} className="rounded-full">Désactiver</Button>
+          ) : (
+            <Button type="button" disabled={loading} onClick={startTotpSetup} className="rounded-full bg-[#1F4E3D] hover:bg-[#163328] text-white">Configurer</Button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -174,7 +293,7 @@ export default function Profile() {
             <User className="w-7 h-7 text-[#C84B31]" /> Profil
           </h1>
         </div>
-        <Link to={`/u/${user.id}`}>
+        <Link to={`/u/${user.public_slug || user.id}`}>
           <Button variant="outline" className="rounded-full border-[#1F4E3D] text-[#1F4E3D]">
             <Eye className="w-4 h-4 mr-1" /> Prévisualiser
           </Button>
@@ -355,6 +474,8 @@ export default function Profile() {
           {saving ? "Enregistrement..." : "Enregistrer le profil CV"}
         </Button>
       </form>
+
+      <SecuritySection user={user} refresh={refresh} />
 
       {user.role === "assistant" && (
         <div className="card-flat p-4">

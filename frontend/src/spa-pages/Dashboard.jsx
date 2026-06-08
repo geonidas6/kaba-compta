@@ -81,7 +81,7 @@ export default function Dashboard() {
         ) : (
           <div className="space-y-2">
             {missions.slice(0, 4).map((m) => (
-              <Link to={`/app/missions/${m.id}`} key={m.id} className="block card-flat p-3 hover:border-[#C84B31]">
+              <Link to={`/app/missions/${m.slug || m.id}`} key={m.id} className="block card-flat p-3 hover:border-[#C84B31]">
                 <div className="flex items-center justify-between">
                   <div className="font-['Manrope'] font-bold truncate">{m.title}</div>
                   <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS[m.status]?.c || ""}`}>{STATUS[m.status]?.l || m.status}</span>
@@ -108,7 +108,7 @@ export default function Dashboard() {
         ) : (
           <div className="space-y-2">
             {questions.slice(0, 4).map((q) => (
-              <Link to={`/app/forum/${q.id}`} key={q.id} className="block card-flat p-3 hover:border-[#1F4E3D]">
+              <Link to={`/app/forum/${q.slug || q.id}`} key={q.id} className="block card-flat p-3 hover:border-[#1F4E3D]">
                 <div className="font-['Manrope'] font-bold text-sm truncate">{q.title}</div>
                 <div className="text-xs text-[#6C6C6C] mt-1">
                   {q.answers_count} réponse{q.answers_count > 1 ? "s" : ""} · {q.votes} vote{q.votes > 1 ? "s" : ""}

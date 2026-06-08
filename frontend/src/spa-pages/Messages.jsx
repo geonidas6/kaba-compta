@@ -105,7 +105,7 @@ export default function Messages() {
           <div className="card-flat p-4 flex flex-col h-[70vh]" data-testid="messages-chat">
             <div className="font-['Manrope'] font-bold mb-2 flex items-center justify-between">
               <span>{active.mission_title}</span>
-              <Link to={`/app/missions/${active.mission_id}`} className="text-xs text-[#C84B31]">Voir la mission →</Link>
+              <Link to={`/app/missions/${active.mission_slug || active.mission_id}`} className="text-xs text-[#C84B31]">Voir la mission →</Link>
             </div>
             <div className="flex-1 space-y-2 overflow-y-auto" data-testid="chat-list">
               {messages.length === 0 && <div className="text-sm text-[#6C6C6C]">Aucun message.</div>}
