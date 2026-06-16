@@ -45,14 +45,6 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Link to="/app/missions" className="card-flat p-5 hover:border-[#C84B31] transition group" data-testid="quick-missions">
-          <div className="flex items-center justify-between">
-            <Briefcase className="w-6 h-6 text-[#C84B31]" />
-            <ArrowRight className="w-4 h-4 text-[#6C6C6C] group-hover:translate-x-1 transition" />
-          </div>
-          <div className="font-['Manrope'] font-bold mt-3">Mes missions</div>
-          <div className="text-xs text-[#6C6C6C]">{missions.length} au total</div>
-        </Link>
         <Link to="/app/forum" className="card-flat p-5 hover:border-[#1F4E3D] transition group" data-testid="quick-forum">
           <div className="flex items-center justify-between">
             <MessageSquare className="w-6 h-6 text-[#1F4E3D]" />
@@ -61,6 +53,44 @@ export default function Dashboard() {
           <div className="font-['Manrope'] font-bold mt-3">Forum</div>
           <div className="text-xs text-[#6C6C6C]">Communauté & entraide</div>
         </Link>
+        <Link to="/app/missions" className="card-flat p-5 hover:border-[#C84B31] transition group" data-testid="quick-missions">
+          <div className="flex items-center justify-between">
+            <Briefcase className="w-6 h-6 text-[#C84B31]" />
+            <ArrowRight className="w-4 h-4 text-[#6C6C6C] group-hover:translate-x-1 transition" />
+          </div>
+          <div className="font-['Manrope'] font-bold mt-3">Mes missions</div>
+          <div className="text-xs text-[#6C6C6C]">{missions.length} au total</div>
+        </Link>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+          <h2 className="font-['Manrope'] font-bold text-xl">Forum récent</h2>
+          <div className="flex items-center gap-3 flex-wrap">
+            <Link to="/app/forum/new">
+              <Button className="h-10 bg-[#1F4E3D] hover:bg-[#163328] text-white font-semibold rounded-xl">
+                <Plus className="w-4 h-4 mr-2" /> Créer une question
+              </Button>
+            </Link>
+            <Link to="/app/forum" className="text-sm text-[#C84B31] font-semibold">Voir tout →</Link>
+          </div>
+        </div>
+        {questions.length === 0 ? (
+          <div className="card-flat p-6 text-center text-sm text-[#6C6C6C]">
+            Aucune question encore.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {questions.slice(0, 4).map((q) => (
+              <Link to={`/app/forum/${q.slug || q.id}`} key={q.id} className="block card-flat p-3 hover:border-[#1F4E3D]">
+                <div className="font-['Manrope'] font-bold text-sm truncate">{q.title}</div>
+                <div className="text-xs text-[#6C6C6C] mt-1">
+                  {q.answers_count} réponse{q.answers_count > 1 ? "s" : ""} · {q.votes} vote{q.votes > 1 ? "s" : ""}
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
 
       <Link to="/app/missions" data-testid="publish-cta">
@@ -89,29 +119,6 @@ export default function Dashboard() {
                 <div className="text-xs text-[#6C6C6C] flex items-center gap-2 mt-1">
                   <span>{m.offers_count || 0} offre{(m.offers_count || 0) > 1 ? "s" : ""}</span>
                   {m.agreed_price_fcfa && <span>· Prix : {fmtFCFA(m.agreed_price_fcfa)}</span>}
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-['Manrope'] font-bold text-xl">Forum récent</h2>
-          <Link to="/app/forum" className="text-sm text-[#C84B31] font-semibold">Voir tout →</Link>
-        </div>
-        {questions.length === 0 ? (
-          <div className="card-flat p-6 text-center text-sm text-[#6C6C6C]">
-            Aucune question encore.
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {questions.slice(0, 4).map((q) => (
-              <Link to={`/app/forum/${q.slug || q.id}`} key={q.id} className="block card-flat p-3 hover:border-[#1F4E3D]">
-                <div className="font-['Manrope'] font-bold text-sm truncate">{q.title}</div>
-                <div className="text-xs text-[#6C6C6C] mt-1">
-                  {q.answers_count} réponse{q.answers_count > 1 ? "s" : ""} · {q.votes} vote{q.votes > 1 ? "s" : ""}
                 </div>
               </Link>
             ))}

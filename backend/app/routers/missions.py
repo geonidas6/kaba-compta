@@ -337,17 +337,22 @@ async def public_landing_data():
     freelance_count = await db.users.count_documents({"role": "assistant"})
     merchant_count = await db.users.count_documents({"role": "merchant"})
     question_count = await db.forum_questions.count_documents({})
-    
+    latest_questions = await db.forum_questions.find(
+        {"is_hidden": False},
+        {"_id": 0, "id": 1, "slug": 1, "title": 1, "answers_count": 1, "votes": 1}
+    ).sort("created_at", -1).limit(4).to_list(4)
+
     # 6 latest missions with status="ouverte", sorted by created_at desc
     latest_missions = await db.missions.find(
         {"status": "ouverte"},
         {"_id": 0}
     ).sort("created_at", -1).limit(6).to_list(6)
-    
+
     return {
         "freelance_count": freelance_count,
         "merchant_count": merchant_count,
         "question_count": question_count,
+        "latest_questions": latest_questions,
         "latest_missions": latest_missions
     }
 

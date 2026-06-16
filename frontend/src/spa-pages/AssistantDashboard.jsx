@@ -111,6 +111,26 @@ export default function AssistantDashboard() {
 
       <div>
         <div className="flex items-center justify-between mb-3">
+          <h2 className="font-['Manrope'] font-bold text-xl">Forum récent</h2>
+          <Link to="/app/forum" className="text-sm text-[#C84B31] font-semibold">Voir tout →</Link>
+        </div>
+        <div className="space-y-2">
+          {questions.slice(0, 4).map((q) => (
+            <Link to={`/app/forum/${q.slug || q.id}`} key={q.id} className="block card-flat p-3 hover:border-[#1F4E3D]">
+              <div className="font-['Manrope'] font-bold text-sm truncate">{q.title}</div>
+              <div className="text-xs text-[#6C6C6C] mt-1">
+                {q.answers_count} réponse{q.answers_count > 1 ? "s" : ""} · {q.votes} vote{q.votes > 1 ? "s" : ""}
+              </div>
+            </Link>
+          ))}
+          {questions.length === 0 && (
+            <div className="text-[#6C6C6C] text-sm">Aucune question récente pour le moment.</div>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-3">
           <h2 className="font-['Manrope'] font-bold text-xl">Missions disponibles</h2>
           <Link to="/app/missions" className="text-sm text-[#C84B31] font-semibold">Tout voir →</Link>
         </div>

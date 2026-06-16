@@ -190,7 +190,7 @@ export default function ForumQuestionDetail() {
       }
     } catch {
       toast.error("Question introuvable");
-      navigate("/app/forum");
+      navigate(user ? "/app/forum" : "/forum");
     }
   };
 
@@ -227,7 +227,7 @@ export default function ForumQuestionDetail() {
     if (!window.confirm("Supprimer la question (et toutes les réponses) ?")) return;
     await api.delete(`/forum/questions/${id}`);
     toast.success("Supprimé");
-    navigate("/app/forum");
+    navigate(user ? "/app/forum" : "/forum");
   };
 
   const editQ = () => {
@@ -544,7 +544,7 @@ export default function ForumQuestionDetail() {
                       <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); reportA(a.id); }} className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[#EAE5D9] bg-white px-3 text-xs font-bold text-[#6C6C6C] shadow-sm transition hover:border-[#C84B31]/40 hover:text-[#C84B31]">
                         <Flag className="w-3.5 h-3.5" /> Signaler
                       </button>
-                      {(a.author_id === user.id || isAdmin) && (
+                      {(a.author_id === user?.id || isAdmin) && (
                         <>
                           <button
                             type="button"
@@ -608,7 +608,7 @@ export default function ForumQuestionDetail() {
                       }}
                       className="flex items-center gap-1.5 sm:gap-2 mt-2 pt-2 border-t border-[#EAE5D9]/40 min-w-0"
                     >
-                      {renderAvatar(user.avatar_url, user.display_name, "w-6 h-6 text-[10px]")}
+                      {renderAvatar(user?.avatar_url, user?.display_name || "Invité", "w-6 h-6 text-[10px]")}
                       <input
                         name="replyText"
                         type="text"

@@ -24,6 +24,7 @@ export default function Landing() {
     freelance_count: 0,
     merchant_count: 0,
     question_count: 0,
+    latest_questions: [],
     latest_missions: []
   });
   const [loading, setLoading] = useState(true);
@@ -239,6 +240,50 @@ export default function Landing() {
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className="py-16 bg-[#FAF8F5] border-y border-[#EAE5D9]">
+        <div className="max-w-5xl mx-auto px-4">
+          <div className="flex items-center justify-between gap-4 flex-wrap mb-10">
+            <div>
+              <div className="inline-flex items-center gap-2 bg-[#ECA869]/20 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest text-[#C84B31]">
+                <MessageSquare className="w-3.5 h-3.5" /> Forum récent
+              </div>
+              <h2 className="font-['Manrope'] font-bold text-3xl sm:text-4xl mt-3">
+                Dernières questions publiées sur le forum
+              </h2>
+              <p className="text-[#6C6C6C] mt-2 max-w-2xl">
+                Consultez les échanges récents de la communauté avant même de parcourir les missions ouvertes.
+              </p>
+            </div>
+            <Link to="/forum" className="text-sm text-[#C84B31] font-semibold shrink-0">Voir tout →</Link>
+          </div>
+
+          {loading ? (
+            <div className="flex justify-center py-12">
+              <div className="w-8 h-8 border-4 border-[#1F4E3D] border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          ) : data.latest_questions.length === 0 ? (
+            <div className="text-center py-12 bg-white rounded-2xl border border-[#EAE5D9] p-6">
+              <p className="text-sm text-[#6C6C6C] italic">Aucune question récente pour le moment.</p>
+            </div>
+          ) : (
+            <div className="grid gap-4">
+              {data.latest_questions.map((q) => (
+                <Link
+                  key={q.id}
+                  to={`/forum/${q.slug || q.id}`}
+                  className="bg-white rounded-2xl border border-[#EAE5D9] px-5 py-4 shadow-sm hover:shadow-md hover:border-[#1F4E3D]/50 transition"
+                >
+                  <div className="font-['Manrope'] font-bold text-base text-[#2D2D2D]">{q.title}</div>
+                  <div className="text-sm text-[#6C6C6C] mt-1">
+                    {q.answers_count || 0} réponse{(q.answers_count || 0) > 1 ? "s" : ""} · {q.votes || 0} vote{(q.votes || 0) > 1 ? "s" : ""}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
