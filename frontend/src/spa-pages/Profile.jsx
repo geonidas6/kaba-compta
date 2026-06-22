@@ -183,6 +183,7 @@ export default function Profile() {
     shop_name: user?.shop_name || "",
     city: user?.city || "",
     bio: user?.bio || "",
+    email: user?.email || "",
     avatar_url: user?.avatar_url || "",
     education_level: user?.education_level || "Licence",
     skills: joinList(user?.skills || []),
@@ -212,6 +213,7 @@ export default function Profile() {
       shop_name: user?.shop_name || "",
       city: user?.city || "",
       bio: user?.bio || "",
+      email: user?.email || "",
       avatar_url: user?.avatar_url || "",
       education_level: user?.education_level || "Licence",
       skills: joinList(user?.skills || []),
@@ -342,6 +344,11 @@ export default function Profile() {
             <div>
               <Label>Ville</Label>
               <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} className="h-11" data-testid="profile-city-input" />
+            </div>
+
+            <div>
+              <Label>Adresse email</Label>
+              <Input value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} className="h-11" type="email" data-testid="profile-email-input" placeholder="vous@exemple.com" />
             </div>
             {user.role === "assistant" && (
               <div>

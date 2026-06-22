@@ -563,14 +563,14 @@ function OfferChat({ offer, mission, onClose }) {
   };
 
   return (
-    <div className="card-flat p-4 fixed inset-x-2 bottom-2 z-30 max-w-3xl mx-auto bg-white shadow-xl" data-testid="offer-chat">
+    <div className="card-flat p-4 fixed inset-x-2 bottom-20 md:bottom-2 z-40 max-w-3xl mx-auto bg-white shadow-2xl rounded-t-2xl md:rounded-2xl overflow-hidden max-h-[calc(100dvh-7rem)] md:max-h-[70vh] flex flex-col" data-testid="offer-chat">
       <div className="flex items-center justify-between mb-2">
         <div className="font-['Manrope'] font-bold text-sm flex items-center gap-1">
           <MessageCircle className="w-4 h-4" /> Discussion : {offer.assistant_name} ↔ {mission.merchant_name}
         </div>
         <button onClick={onClose} className="text-[#6C6C6C] text-sm" data-testid="close-chat">✕</button>
       </div>
-      <div className="space-y-2 max-h-72 overflow-y-auto" data-testid="chat-list">
+      <div className="space-y-2 flex-1 overflow-y-auto pr-1" data-testid="chat-list">
         {messages.length === 0 && <div className="text-sm text-[#6C6C6C]">Démarrez la conversation.</div>}
         {messages.map((m) => {
           const me = m.sender_id === user.id;
@@ -587,7 +587,7 @@ function OfferChat({ offer, mission, onClose }) {
           );
         })}
       </div>
-      <div className="flex items-center gap-2 mt-3">
+      <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[#EAE5D9]">
         <Input
           value={text}
           onChange={(e) => setText(e.target.value)}

@@ -27,6 +27,7 @@ from app.helpers import (
     ensure_unique_user_slug,
     ensure_unique_forum_slug,
     ensure_unique_mission_slug,
+    notify_user_channels,
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -34,22 +35,29 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 CRONICLE_TITLE_PREFIX = "Kaba-Compta - "
 
 DEFAULT_NOTIFICATION_TEMPLATES = [
-    {"key": "otp_login", "label": "OTP connexion WhatsApp", "title_template": "Code de connexion", "body_template": "Votre code de connexion est {code}.", "whatsapp_template": "🔐 Votre code Kaba-Compta est : *{code}*\n\nCe code expire dans {expires_minutes} minutes. Ne le partagez avec personne."},
-    {"key": "otp_phone_verification", "label": "OTP vérification téléphone", "title_template": "Code de vérification", "body_template": "Votre code de vérification est {code}.", "whatsapp_template": "✅ Kaba-Compta : votre code de vérification est *{code}*\n\nIl expire dans {expires_minutes} minutes."},
-    {"key": "forum_answer", "label": "Réponse à une question", "title_template": "Nouvelle réponse", "body_template": "{actor_name} a répondu à votre question.", "whatsapp_template": "Kaba-Compta : {actor_name} a répondu à votre question."},
-    {"key": "forum_reaction", "label": "Réaction forum", "title_template": "Nouvelle réaction", "body_template": "{actor_name} a réagi à votre publication.", "whatsapp_template": "Kaba-Compta : {actor_name} a réagi à votre publication."},
-    {"key": "forum_reply", "label": "Commentaire sur réponse", "title_template": "Nouveau commentaire", "body_template": "{actor_name} a répondu à votre réponse.", "whatsapp_template": "Kaba-Compta : {actor_name} a répondu à votre réponse."},
-    {"key": "kyc_expired", "label": "KYC expiré", "title_template": "Document KYC expiré", "body_template": "{body}", "whatsapp_template": "{whatsapp_text}"},
-    {"key": "mission_no_offer", "label": "Mission sans offre", "title_template": "Aucune offre reçue", "body_template": "{body}", "whatsapp_template": "{whatsapp_text}"},
-    {"key": "mission_pending_selection", "label": "Offres en attente", "title_template": "Des offres attendent votre décision", "body_template": "{body}", "whatsapp_template": "{whatsapp_text}"},
-    {"key": "mission_deadline", "label": "Échéance mission", "title_template": "Mission bientôt à échéance", "body_template": "{body}", "whatsapp_template": "{whatsapp_text}"},
-    {"key": "mission_overdue", "label": "Mission en retard", "title_template": "Mission en retard", "body_template": "{body}", "whatsapp_template": "{whatsapp_text}"},
-    {"key": "forum_unanswered", "label": "Question sans réponse", "title_template": "Votre question attend une réponse", "body_template": "{body}", "whatsapp_template": "{whatsapp_text}"},
-    {"key": "forum_digest", "label": "Résumé forum comptables", "title_template": "Questions forum à aider", "body_template": "{body}", "whatsapp_template": "{whatsapp_text}"},
-    {"key": "daily_digest", "label": "Résumé quotidien", "title_template": "{title}", "body_template": "{body}", "whatsapp_template": "{whatsapp_text}"},
+    {"key": "otp_login", "label": "OTP connexion WhatsApp", "title_template": "Code de connexion", "body_template": "Votre code de connexion est {code}.", "whatsapp_template": "🔐 Votre code Kaba-Compta est : *{code}*\n\nCe code expire dans {expires_minutes} minutes. Ne le partagez avec personne.", "audience": "Utilisateur connecté", "trigger": "Envoyé lors d'une connexion avec authentification WhatsApp."},
+    {"key": "otp_phone_verification", "label": "OTP vérification téléphone", "title_template": "Code de vérification", "body_template": "Votre code de vérification est {code}.", "whatsapp_template": "✅ Kaba-Compta : votre code de vérification est *{code}*\n\nIl expire dans {expires_minutes} minutes.", "audience": "Utilisateur inscrit", "trigger": "Envoyé juste après l'inscription ou la vérification du numéro."},
+    {"key": "forum_answer", "label": "Réponse à une question", "title_template": "Nouvelle réponse", "body_template": "{actor_name} a répondu à votre question.", "whatsapp_template": "Kaba-Compta : {actor_name} a répondu à votre question.", "audience": "Auteur de la question", "trigger": "Envoyé quand quelqu'un répond à une question du forum."},
+    {"key": "forum_reaction", "label": "Réaction forum", "title_template": "Nouvelle réaction", "body_template": "{actor_name} a réagi à votre publication.", "whatsapp_template": "Kaba-Compta : {actor_name} a réagi à votre publication.", "audience": "Auteur de la publication", "trigger": "Envoyé quand quelqu'un réagit à une publication du forum."},
+    {"key": "forum_reply", "label": "Commentaire sur réponse", "title_template": "Nouveau commentaire", "body_template": "{actor_name} a répondu à votre réponse.", "whatsapp_template": "Kaba-Compta : {actor_name} a répondu à votre réponse.", "audience": "Auteur de la réponse", "trigger": "Envoyé quand quelqu'un commente une réponse du forum."},
+    {"key": "kyc_pending", "label": "KYC en attente", "title_template": "Nouveau dossier KYC", "body_template": "Un dossier KYC vient d'être soumis et attend votre validation.", "whatsapp_template": "Kaba-Compta : un dossier KYC vient d'être soumis et attend votre validation.", "audience": "Admins", "trigger": "Envoyé quand un comptable dépose un dossier KYC complet en attente de validation."},
+    {"key": "mission_match", "label": "Mission correspondant au profil", "title_template": "Nouvelle mission compatible", "body_template": "Une nouvelle mission correspond à votre profil.", "whatsapp_template": "Kaba-Compta : une nouvelle mission correspond à votre profil.", "audience": "Comptables correspondants", "trigger": "Envoyé immédiatement après publication d'une mission compatible avec le profil."},
+    {"key": "review_reminder", "label": "Rappel d'avis", "title_template": "Rappel d'avis à laisser", "body_template": "Votre mission est terminée. Il reste un avis à déposer.", "whatsapp_template": "Kaba-Compta : votre mission est terminée. Il reste un avis à déposer.", "audience": "Les deux participants de la mission", "trigger": "Envoyé après une mission terminée si un avis manque encore."},
+    {"key": "kyc_approved", "label": "KYC approuvé", "title_template": "Documents approuvés", "body_template": "Votre dossier KYC a été approuvé. Vous pouvez maintenant accéder à toutes les fonctionnalités de Kaba-Compta.", "whatsapp_template": "Kaba-Compta : votre dossier KYC a été approuvé. Vous pouvez maintenant accéder à toutes les fonctionnalités.", "audience": "Assistant concerné", "trigger": "Envoyé juste après validation du dossier KYC par un admin."},
+    {"key": "kyc_rejected", "label": "KYC rejeté", "title_template": "Documents à corriger", "body_template": "Votre dossier KYC n'a pas pu être validé. Merci de corriger vos documents et de les renvoyer.", "whatsapp_template": "Kaba-Compta : votre dossier KYC n'a pas pu être validé. Merci de corriger vos documents et de les renvoyer.", "audience": "Assistant concerné", "trigger": "Envoyé juste après un refus du dossier KYC."},
+    {"key": "kyc_expired", "label": "KYC expiré", "title_template": "Document KYC expiré", "body_template": "{body}", "whatsapp_template": "{whatsapp_text}", "audience": "Assistant concerné", "trigger": "Envoyé automatiquement par cron quand une pièce d'identité expire."},
+    {"key": "mission_no_offer", "label": "Mission sans offre", "title_template": "Aucune offre reçue", "body_template": "{body}", "whatsapp_template": "{whatsapp_text}", "audience": "Marchand créateur de la mission", "trigger": "Envoyé par cron quand une mission reste sans offre après un délai."},
+    {"key": "mission_pending_selection", "label": "Offres en attente", "title_template": "Des offres attendent votre décision", "body_template": "{body}", "whatsapp_template": "{whatsapp_text}", "audience": "Marchand créateur de la mission", "trigger": "Envoyé par cron quand des offres attendent une décision depuis un moment."},
+    {"key": "mission_deadline", "label": "Échéance mission", "title_template": "Mission bientôt à échéance", "body_template": "{body}", "whatsapp_template": "{whatsapp_text}", "audience": "Assistant assigné", "trigger": "Envoyé par cron quand la mission approche de son délai de livraison."},
+    {"key": "mission_overdue", "label": "Mission en retard", "title_template": "Mission en retard", "body_template": "{body}", "whatsapp_template": "{whatsapp_text}", "audience": "Marchand et assistant", "trigger": "Envoyé par cron quand le délai prévu est dépassé."},
+    {"key": "forum_unanswered", "label": "Question sans réponse", "title_template": "Votre question attend une réponse", "body_template": "{body}", "whatsapp_template": "{whatsapp_text}", "audience": "Auteur de la question", "trigger": "Envoyé par cron après un long silence sur une question du forum."},
+    {"key": "forum_digest", "label": "Résumé forum comptables", "title_template": "Questions forum à aider", "body_template": "{body}", "whatsapp_template": "{whatsapp_text}", "audience": "Comptables actifs", "trigger": "Envoyé par cron quand des questions restent sans réponse."},
+    {"key": "daily_digest", "label": "Résumé quotidien", "title_template": "{title}", "body_template": "{body}", "whatsapp_template": "{whatsapp_text}", "audience": "Marchands, comptables et admins selon leur rôle", "trigger": "Envoyé tous les jours par cron sous forme de résumé d'activité."},
 ]
 
 CRONICLE_JOBS = [
+
+
     {
         "key": "kyc_expiry",
         "title": "KYC expiré",
@@ -81,6 +89,14 @@ CRONICLE_JOBS = [
         "schedule": "Tous les jours à 10:00",
         "command": "docker exec kaba-compta-api-1 python -m app.crons forum_notifications",
         "timing": {"hours": [10], "minutes": [0]},
+    },
+    {
+        "key": "review_reminders",
+        "title": "Rappels d'avis",
+        "description": "Relance les participants des missions terminées qui n'ont pas encore laissé d'avis.",
+        "schedule": "Tous les jours à 09:00",
+        "command": "docker exec kaba-compta-api-1 python -m app.crons review_reminders",
+        "timing": {"hours": [9], "minutes": [0]},
     },
 
     {
@@ -307,6 +323,27 @@ async def admin_kyc_decision(
     res = await db.users.update_one({"id": user_id}, {"$set": {"kyc_status": new_status}})
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    title = "Documents approuvés" if decision == "approve" else "Documents à corriger"
+    body = (
+        "Votre dossier KYC a été approuvé. Vous pouvez maintenant accéder à toutes les fonctionnalités de Kaba-Compta."
+        if decision == "approve"
+        else "Votre dossier KYC n'a pas pu être validé. Merci de corriger vos documents et de les renvoyer."
+    )
+    whatsapp_text = (
+        "Kaba-Compta : votre dossier KYC a été approuvé. Vous pouvez maintenant accéder à toutes les fonctionnalités."
+        if decision == "approve"
+        else "Kaba-Compta : votre dossier KYC n'a pas pu être validé. Merci de corriger vos documents et de les renvoyer."
+    )
+    await notify_user_channels(
+        user_id,
+        notif_type="kyc_approved" if decision == "approve" else "kyc_rejected",
+        title=title,
+        body=body,
+        whatsapp_text=whatsapp_text,
+        entity_type="kyc",
+        entity_id=user_id,
+        link="/app/profile",
+    )
     return {"user_id": user_id, "kyc_status": new_status}
 
 @router.get("/missions")

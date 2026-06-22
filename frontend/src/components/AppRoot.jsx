@@ -31,6 +31,7 @@ import AdminAuditLogs from "@/spa-pages/admin/AdminAuditLogs";
 import AdminSettings from "@/spa-pages/admin/AdminSettings";
 import AdminProfile from "@/spa-pages/admin/AdminProfile";
 import AdminNotificationTemplates from "@/spa-pages/admin/AdminNotificationTemplates";
+import AdminCronJobs from "@/spa-pages/admin/AdminCronJobs";
 import AdminForumReports from "@/spa-pages/admin/AdminForumReports";
 import AdminForumQuestionDetail from "@/spa-pages/admin/AdminForumQuestionDetail";
 
@@ -115,6 +116,7 @@ export default function AppRoot() {
               <Route path="audit" element={<AdminAuditLogs />} />
               <Route path="broadcast" element={<AdminBroadcast />} />
               <Route path="notification-templates" element={<AdminNotificationTemplates />} />
+              <Route path="cron-jobs" element={<AdminCronJobs />} />
               <Route path="settings" element={<AdminSettings />} />
               <Route path="profile" element={<AdminProfile />} />
             </Route>

@@ -9,6 +9,7 @@ class RegisterRequest(BaseModel):
     password: str
     role: Role
     display_name: str
+    email: Optional[str] = None
     shop_name: Optional[str] = None
     city: Optional[str] = "Lomé"
 
@@ -33,6 +34,7 @@ class UserPublic(BaseModel):
     phone: str
     role: Role
     display_name: str
+    email: Optional[str] = None
     shop_name: Optional[str] = None
     city: Optional[str] = None
     avatar_url: Optional[str] = None
@@ -67,6 +69,7 @@ class ProfileUpdate(BaseModel):
     shop_name: Optional[str] = None
     city: Optional[str] = None
     bio: Optional[str] = None
+    email: Optional[str] = None
     avatar_url: Optional[str] = None
     education_level: Optional[str] = None
     skills: Optional[List[str]] = None
@@ -159,6 +162,7 @@ class AdminUserUpdate(BaseModel):
     shop_name: Optional[str] = None
     city: Optional[str] = None
     phone: Optional[str] = None
+    email: Optional[str] = None
     role: Optional[Role] = None
 
 class PlatformSettingsUpdate(BaseModel):

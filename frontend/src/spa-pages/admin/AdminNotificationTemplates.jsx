@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { BellRing, Bold, Italic, List, MessageCircle, Quote, Save, Strikethrough, ToggleLeft, Type } from "lucide-react";
+import { BellRing, Bold, Clock3, Italic, List, MessageCircle, Quote, Save, Strikethrough, ToggleLeft, Type, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -133,8 +133,11 @@ export default function AdminNotificationTemplates() {
         </div>
       </div>
 
-      <div className="card-flat p-4 text-xs text-[#6C6C6C]">
-        Variables disponibles : <span className="font-mono">{'{actor_name}'}</span>, <span className="font-mono">{'{title}'}</span>, <span className="font-mono">{'{body}'}</span>, <span className="font-mono">{'{whatsapp_text}'}</span>, <span className="font-mono">{'{link}'}</span>.
+      <div className="card-flat p-4 text-xs text-[#6C6C6C] space-y-1">
+        <div>
+          Variables disponibles : <span className="font-mono">{'{actor_name}'}</span>, <span className="font-mono">{'{title}'}</span>, <span className="font-mono">{'{body}'}</span>, <span className="font-mono">{'{whatsapp_text}'}</span>, <span className="font-mono">{'{link}'}</span>.
+        </div>
+        <div>Chaque carte précise qui reçoit la notification et à quel moment elle part.</div>
       </div>
 
       {loading && <div className="text-sm text-[#6C6C6C]">Chargement...</div>}
@@ -143,9 +146,19 @@ export default function AdminNotificationTemplates() {
         {templates.map((tpl) => (
           <div key={tpl.key} className="card-flat p-5 space-y-4">
             <div className="flex items-start justify-between gap-3 flex-wrap">
-              <div>
+              <div className="space-y-2">
                 <div className="font-['Manrope'] font-bold text-lg text-[#2D2D2D]">{tpl.label}</div>
                 <div className="text-xs text-[#6C6C6C] font-mono">{tpl.key}</div>
+                <div className="flex flex-wrap gap-2">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[#EEF5F2] px-2.5 py-1 text-[11px] font-semibold text-[#1F4E3D]">
+                    <Users className="w-3.5 h-3.5" />
+                    {tpl.audience || "Audience non précisée"}
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[#FFF3E8] px-2.5 py-1 text-[11px] font-semibold text-[#C84B31]">
+                    <Clock3 className="w-3.5 h-3.5" />
+                    {tpl.trigger || "Moment non précisé"}
+                  </span>
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-[#6C6C6C]">{tpl.enabled === false ? "Désactivé" : "Actif"}</span>

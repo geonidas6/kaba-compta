@@ -129,6 +129,7 @@ async def register(data: RegisterRequest):
         "password_hash": hash_password(data.password),
         "role": data.role,
         "display_name": data.display_name,
+        "email": data.email,
         "shop_name": data.shop_name,
         "city": data.city or "Lomé",
         "avatar_url": None,

@@ -37,6 +37,12 @@ export default function Messages() {
   }, []);
 
   useEffect(() => {
+    if (!active && conv.length > 0) {
+      setActive(conv[0]);
+    }
+  }, [conv, active]);
+
+  useEffect(() => {
     if (!active) return;
     loadMessages(active.offer_id);
     const t = setInterval(() => loadMessages(active.offer_id), 10000);
@@ -75,8 +81,8 @@ export default function Messages() {
         </div>
       )}
 
-      <div className="grid md:grid-cols-[320px_1fr] gap-3">
-        <div className="space-y-2">
+      <div className="grid gap-3 lg:grid-cols-[320px_minmax(0,1fr)] items-start">
+        <div className="space-y-2 order-2 lg:order-1 max-h-[36vh] lg:max-h-[calc(100dvh-240px)] overflow-y-auto pr-1">
           {conv.map((c) => (
             <button
               key={c.offer_id}
@@ -102,7 +108,7 @@ export default function Messages() {
         </div>
 
         {active && (
-          <div className="card-flat p-4 flex flex-col h-[70vh]" data-testid="messages-chat">
+          <div className="card-flat p-4 flex flex-col min-h-[56vh] lg:h-[calc(100dvh-240px)] order-1 lg:order-2" data-testid="messages-chat">
             <div className="font-['Manrope'] font-bold mb-2 flex items-center justify-between">
               <span>{active.mission_title}</span>
               <Link to={`/app/missions/${active.mission_slug || active.mission_id}`} className="text-xs text-[#C84B31]">Voir la mission →</Link>

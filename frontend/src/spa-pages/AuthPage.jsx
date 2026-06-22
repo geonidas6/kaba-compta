@@ -221,6 +221,7 @@ function RegisterForm({ initialRole, onDone }) {
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [shopName, setShopName] = useState("");
+  const [email, setEmail] = useState("");
   const [city, setCity] = useState("Lomé");
   const [otp, setOtp] = useState("");
   const [devCode, setDevCode] = useState(null);
@@ -239,6 +240,7 @@ function RegisterForm({ initialRole, onDone }) {
         role,
         display_name: displayName,
         shop_name: role === "merchant" ? shopName : null,
+        email: email || null,
         city,
       });
       login(r.data.token, r.data.user);
@@ -375,6 +377,20 @@ function RegisterForm({ initialRole, onDone }) {
           onChange={(e) => setPhone(e.target.value)}
           className="h-12"
           required
+        />
+      </div>
+
+
+      <div className="space-y-1.5">
+        <Label htmlFor="email-reg">Adresse email</Label>
+        <Input
+          id="email-reg"
+          data-testid="register-email-input"
+          type="email"
+          placeholder="vous@exemple.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="h-12"
         />
       </div>
 

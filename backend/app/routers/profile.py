@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 
 from app.database import db
 from app.models import ProfileUpdate, UserPublic
-from app.helpers import get_current_user, encrypt_bytes, decrypt_bytes, now_iso, USER_PRIVATE_FIELDS, USER_PUBLIC_PRIVATE_FIELDS, ensure_unique_user_slug, public_profile_name
+from app.helpers import get_current_user, encrypt_bytes, decrypt_bytes, now_iso, USER_PRIVATE_FIELDS, USER_PUBLIC_PRIVATE_FIELDS, ensure_unique_user_slug, public_profile_name, notify_admins_channels
 
 router = APIRouter(tags=["profile"])
 
@@ -145,6 +145,16 @@ async def kyc_upload(
     doc_types = {d.get("doc_type") for d in docs} | {doc_type}
     next_status = "pending" if (doc_types & {"id_card", "passport"}) and "diploma" in doc_types else "incomplete"
     await db.users.update_one({"id": user["id"]}, {"$set": {"kyc_status": next_status}})
+    if next_status == "pending":
+        await notify_admins_channels(
+            notif_type="kyc_pending",
+            title="Nouveau dossier KYC à valider",
+            body=f"{user.get('display_name') or 'Un comptable'} a envoyé ses documents KYC et attend une validation.",
+            whatsapp_text=f"Kaba-Compta Admin : {user.get('display_name') or 'Un comptable'} a envoyé ses documents KYC et attend une validation.",
+            entity_type="kyc",
+            entity_id=user["id"],
+            link="/admin/kyc",
+        )
     return {"id": doc["id"], "doc_type": doc_type, "size": doc["size"], "uploaded_at": doc["uploaded_at"], "kyc_status": next_status}
 
 @router.get("/kyc/my")

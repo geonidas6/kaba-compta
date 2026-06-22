@@ -16,6 +16,7 @@ import {
   X,
   MessageSquare,
   BellRing,
+  Clock3,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
@@ -27,6 +28,7 @@ const tabs = [
   { to: "/admin/forum-reports", icon: MessageSquare, label: "Gestion du Forum" },
   { to: "/admin/broadcast", icon: Megaphone, label: "Diffusion WhatsApp" },
   { to: "/admin/notification-templates", icon: BellRing, label: "Modèles notifications" },
+  { to: "/admin/cron-jobs", icon: Clock3, label: "Tâches cron" },
   { to: "/admin/audit", icon: ListChecks, label: "Journal d'audit" },
   { to: "/admin/settings", icon: Settings, label: "Paramètres" },
   { to: "/admin/profile", icon: UserCircle, label: "Mon profil" },

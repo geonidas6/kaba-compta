@@ -158,7 +158,7 @@ export default function PublicProfile() {
         </div>
       </main>
 
-      <footer className="border-t border-[#EAE5D9] py-8 text-center text-sm text-[#6C6C6C] bg-white mt-auto">Kaba-Compta Togo — Plateforme communautaire d'entraide et de mise en relation comptable.</footer>
+      <footer className="border-t border-[#EAE5D9] py-8 bg-white mt-auto"><div className="max-w-6xl mx-auto px-4 text-sm text-[#6C6C6C] flex justify-center sm:justify-end sm:text-right">Kaba-Compta Togo — Plateforme communautaire d'entraide et de mise en relation comptable.</div></footer>
     </div>
   );
 }

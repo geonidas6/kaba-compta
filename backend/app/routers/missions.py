@@ -1,12 +1,88 @@
 import uuid
+import unicodedata
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 
 from app.database import db
 from app.models import MissionCreate, MissionUpdate, OfferCreate, MISSION_STATUSES
-from app.helpers import get_current_user, now_iso, notify_user, ensure_unique_mission_slug
+from app.helpers import get_current_user, now_iso, notify_user, notify_user_channels, ensure_unique_mission_slug
 
 router = APIRouter(tags=["missions"])
+
+MISSION_MATCH_KEYWORDS = {
+    "caisse": ["caisse", "trésorerie", "encaissement", "cash"],
+    "inventaire": ["inventaire", "stock", "stocks"],
+    "audit": ["audit", "contrôle", "rapport"],
+    "fiscal": ["fiscal", "tva", "taxe", "déclaration"],
+    "paie": ["paie", "salaire", "salaires", "bulletin"],
+    "creation_entreprise": ["création", "entreprise", "immatriculation", "statut"],
+}
+
+
+def _norm_text(value: str) -> str:
+    value = unicodedata.normalize("NFKD", value or "").encode("ascii", "ignore").decode("ascii")
+    return " ".join(value.lower().split())
+
+
+async def _match_assistants_for_mission(mission: dict) -> list[dict]:
+    assistants = await db.users.find(
+        {"role": "assistant", "kyc_status": "approved", "banned": {"$ne": True}},
+        {"_id": 0, "id": 1, "display_name": 1, "shop_name": 1, "city": 1, "skills": 1, "email": 1, "phone": 1},
+    ).to_list(2000)
+    mission_text = _norm_text(" ".join([
+        mission.get("title") or "",
+        mission.get("description") or "",
+        mission.get("type") or "",
+        mission.get("location") or "",
+    ]))
+    mission_type = mission.get("type") or ""
+    mission_location = _norm_text(mission.get("location") or "")
+    keywords = set(MISSION_MATCH_KEYWORDS.get(mission_type, []))
+    if mission_type:
+        keywords.add(mission_type.replace("_", " "))
+    matched = []
+    for assistant in assistants:
+        assistant_city = _norm_text(assistant.get("city") or "")
+        location_match = bool(mission.get("remote_ok")) or (assistant_city and mission_location and assistant_city == mission_location)
+        skills = [
+            _norm_text(skill if isinstance(skill, str) else skill.get("name", ""))
+            for skill in (assistant.get("skills") or [])
+            if skill
+        ]
+        skill_match = any(skill and skill in mission_text for skill in skills)
+        keyword_match = any(keyword in mission_text for keyword in keywords)
+        if location_match or skill_match or keyword_match:
+            matched.append(assistant)
+    return matched
+
+
+async def _notify_matching_assistants(mission: dict) -> int:
+    matched = await _match_assistants_for_mission(mission)
+    if not matched:
+        return 0
+    sent = 0
+    title = "Nouvelle mission correspondant à votre profil"
+    body = (
+        f"La mission « {mission.get('title')} » à {mission.get('location')} correspond à votre profil. "
+        "Ouvrez-la pour vérifier le détail et proposer votre offre."
+    )
+    whatsapp_text = (
+        f"Kaba-Compta : une nouvelle mission « {mission.get('title')} » à {mission.get('location')} correspond à votre profil. "
+        "Ouvrez l'application pour proposer votre offre."
+    )
+    for assistant in matched:
+        await notify_user_channels(
+            assistant["id"],
+            notif_type="mission_match",
+            title=title,
+            body=body,
+            whatsapp_text=whatsapp_text,
+            entity_type="mission",
+            entity_id=mission["id"],
+            link=f"/app/missions/{mission['id']}",
+        )
+        sent += 1
+    return sent
 
 async def resolve_mission(identifier: str) -> dict | None:
     return await db.missions.find_one({"$or": [{"id": identifier}, {"slug": identifier}]}, {"_id": 0})
@@ -32,6 +108,7 @@ async def mission_create(data: MissionCreate, user: dict = Depends(get_current_u
         "updated_at": now_iso(),
     }
     await db.missions.insert_one(m)
+    await _notify_matching_assistants(m)
     m.pop("_id", None)
     return m
 

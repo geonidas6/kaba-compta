@@ -5,6 +5,8 @@ import random
 import re
 import unicodedata
 import asyncio
+import smtplib
+from email.message import EmailMessage
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
@@ -32,6 +34,7 @@ USER_PRIVATE_FIELDS = {
 USER_PUBLIC_PRIVATE_FIELDS = {
     **USER_PRIVATE_FIELDS,
     "phone": 0,
+    "email": 0,
     "admin_phone": 0,
     "stripe_customer_id": 0,
     "stripe_subscription_id": 0,
@@ -178,6 +181,18 @@ async def get_platform_config() -> dict:
         "review_visibility_paywall": s.get("review_visibility_paywall", False),
     }
 
+
+def get_email_config() -> dict:
+    return {
+        "host": os.environ.get("SMTP_HOST", ""),
+        "port": int(os.environ.get("SMTP_PORT", "587") or 587),
+        "username": os.environ.get("SMTP_USER", ""),
+        "password": os.environ.get("SMTP_PASSWORD", ""),
+        "from_addr": os.environ.get("SMTP_FROM", os.environ.get("SMTP_USER", "")),
+        "use_tls": os.environ.get("SMTP_USE_TLS", "true").lower() not in ("0", "false", "no"),
+        "use_ssl": os.environ.get("SMTP_USE_SSL", "false").lower() in ("1", "true", "yes"),
+    }
+
 async def send_whatsapp(phone: str, text: str) -> bool:
     cfg = await get_platform_config()
     wa_url = cfg["whatsapp_service_url"]
@@ -203,6 +218,51 @@ async def send_whatsapp(phone: str, text: str) -> bool:
         logger.warning(f"send_whatsapp failed for {phone}: {e}")
         return False
 
+
+async def send_email(recipient: str, subject: str, body: str) -> bool:
+    cfg = get_email_config()
+    if not cfg["host"] or not cfg["from_addr"] or not recipient:
+        return False
+
+    def _send() -> bool:
+        msg = EmailMessage()
+        msg["From"] = cfg["from_addr"]
+        msg["To"] = recipient
+        msg["Subject"] = subject
+        msg.set_content(body)
+
+        if cfg["use_ssl"]:
+            client = smtplib.SMTP_SSL(cfg["host"], cfg["port"], timeout=15)
+        else:
+            client = smtplib.SMTP(cfg["host"], cfg["port"], timeout=15)
+        try:
+            client.ehlo()
+            if cfg["use_tls"] and not cfg["use_ssl"]:
+                client.starttls()
+                client.ehlo()
+            if cfg["username"]:
+                client.login(cfg["username"], cfg["password"] or "")
+            client.send_message(msg)
+            return True
+        finally:
+            try:
+                client.quit()
+            except Exception:
+                client.close()
+
+    try:
+        return await asyncio.to_thread(_send)
+    except Exception as e:
+        logger.warning(f"send_email failed for {recipient}: {e}")
+        return False
+
+
+async def send_email_to_user(user_id: str, subject: str, body: str) -> bool:
+    user = await db.users.find_one({"id": user_id}, {"_id": 0, "email": 1})
+    if not user or not user.get("email"):
+        return False
+    return await send_email(user["email"], subject, body)
+
 def notify_async(phone: str, text: str) -> None:
     try:
         asyncio.create_task(send_whatsapp(phone, text))
@@ -216,6 +276,82 @@ async def notify_user(user_id: str, text: str) -> None:
     u = await db.users.find_one({"id": user_id}, {"_id": 0, "phone": 1})
     if u and u.get("phone"):
         notify_async(u["phone"], text)
+
+
+async def notify_user_channels(
+    user_id: str,
+    *,
+    notif_type: str,
+    title: str,
+    body: str,
+    whatsapp_text: Optional[str] = None,
+    email_subject: Optional[str] = None,
+    email_body: Optional[str] = None,
+    actor_id: Optional[str] = None,
+    actor_name: Optional[str] = None,
+    entity_type: Optional[str] = None,
+    entity_id: Optional[str] = None,
+    link: Optional[str] = None,
+) -> dict:
+    notif = await create_in_app_notification(
+        user_id,
+        notif_type,
+        title,
+        body,
+        actor_id=actor_id,
+        actor_name=actor_name,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        link=link,
+    )
+    if not notif:
+        return notif
+    if whatsapp_text:
+        await notify_user(user_id, whatsapp_text)
+    rendered_title = notif.get("title") if notif else title
+    rendered_body = notif.get("body") if notif else body
+    await send_email_to_user(user_id, email_subject or rendered_title, email_body or rendered_body)
+    return notif
+
+
+
+async def notify_admins_channels(
+    *,
+    notif_type: str,
+    title: str,
+    body: str,
+    whatsapp_text: Optional[str] = None,
+    email_subject: Optional[str] = None,
+    email_body: Optional[str] = None,
+    actor_id: Optional[str] = None,
+    actor_name: Optional[str] = None,
+    entity_type: Optional[str] = None,
+    entity_id: Optional[str] = None,
+    link: Optional[str] = None,
+) -> int:
+    admins = await db.users.find({"role": "admin", "banned": {"$ne": True}}, {"_id": 0, "id": 1}).to_list(100)
+    sent = 0
+    for admin in admins:
+        notif = await create_in_app_notification(
+            admin["id"],
+            notif_type,
+            title,
+            body,
+            actor_id=actor_id,
+            actor_name=actor_name,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            link=link,
+        )
+        if not notif:
+            continue
+        if whatsapp_text:
+            await notify_user(admin["id"], whatsapp_text)
+        rendered_title = notif.get("title") if notif else title
+        rendered_body = notif.get("body") if notif else body
+        await send_email_to_user(admin["id"], email_subject or rendered_title, email_body or rendered_body)
+        sent += 1
+    return sent
 
 
 def render_template_string(template: str, values: dict) -> str:

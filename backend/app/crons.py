@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 from app.config import logger
 from app.database import client, db
-from app.helpers import notify_user, now_iso, apply_notification_template
+from app.helpers import notify_user, now_iso, apply_notification_template, send_email_to_user
 from app.routers.config_routes import build_sitemap_xml
 
 
@@ -417,6 +417,66 @@ async def daily_digest() -> dict[str, Any]:
     return {"notifications": sent}
 
 
+async def review_reminders() -> dict[str, Any]:
+    now = utcnow()
+    cutoff = now - timedelta(hours=24)
+    sent = 0
+    missions = await db.missions.find(
+        {
+            "status": "terminee",
+            "$or": [
+                {"completed_at": {"$lt": cutoff.isoformat()}},
+                {"updated_at": {"$lt": cutoff.isoformat()}},
+            ],
+        },
+        {"_id": 0},
+    ).to_list(5000)
+    for mission in missions:
+        merchant_id = mission.get("merchant_id")
+        assistant_id = mission.get("selected_assistant_id")
+        if not merchant_id or not assistant_id:
+            continue
+
+        merchant_review = await db.reviews.find_one({"mission_id": mission["id"], "from_user_id": merchant_id}, {"_id": 1})
+        if not merchant_review:
+            title = "Laissez un avis"
+            body = f"Votre mission « {fmt_title(mission.get('title'))} » est terminée. Donnez votre avis sur le comptable pour aider la communauté."
+            ok = await create_notification_once(
+                dedupe_key=f"review_reminder:merchant:{mission['id']}:{merchant_id}",
+                user_id=merchant_id,
+                notif_type="review_reminder",
+                title=title,
+                body=body,
+                entity_type="mission",
+                entity_id=mission["id"],
+                link=f"/app/missions/{mission['id']}",
+                whatsapp_text=f"Kaba-Compta : Votre mission « {fmt_title(mission.get('title'))} » est terminée. Donnez votre avis sur le comptable.",
+            )
+            if ok:
+                await send_email_to_user(merchant_id, title, body)
+                sent += 1
+
+        assistant_review = await db.reviews.find_one({"mission_id": mission["id"], "from_user_id": assistant_id}, {"_id": 1})
+        if not assistant_review:
+            title = "Laissez un avis"
+            body = f"Votre mission « {fmt_title(mission.get('title'))} » est terminée. Donnez votre avis sur le marchand pour compléter votre historique."
+            ok = await create_notification_once(
+                dedupe_key=f"review_reminder:assistant:{mission['id']}:{assistant_id}",
+                user_id=assistant_id,
+                notif_type="review_reminder",
+                title=title,
+                body=body,
+                entity_type="mission",
+                entity_id=mission["id"],
+                link=f"/app/missions/{mission['id']}",
+                whatsapp_text=f"Kaba-Compta : Votre mission « {fmt_title(mission.get('title'))} » est terminée. Donnez votre avis sur le marchand.",
+            )
+            if ok:
+                await send_email_to_user(assistant_id, title, body)
+                sent += 1
+    return {"notifications": sent}
+
+
 async def sitemap_generate() -> dict[str, Any]:
     xml = await build_sitemap_xml()
     await db.app_settings.update_one(
@@ -432,6 +492,7 @@ TASKS = {
     "mission_status_housekeeping": mission_status_housekeeping,
     "mission_notifications": mission_notifications,
     "forum_notifications": forum_notifications,
+    "review_reminders": review_reminders,
     "cleanup": cleanup,
     "daily_digest": daily_digest,
     "sitemap_generate": sitemap_generate,
