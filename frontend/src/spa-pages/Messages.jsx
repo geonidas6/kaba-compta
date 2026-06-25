@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { MessageCircle, Send } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, MessageCircle, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api, fmtFCFA } from "@/lib/api";
@@ -17,6 +17,8 @@ const STATUS_LABELS = {
 
 export default function Messages() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const { offerId } = useParams();
   const [conv, setConv] = useState([]);
   const [active, setActive] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -37,17 +39,44 @@ export default function Messages() {
   }, []);
 
   useEffect(() => {
-    if (!active && conv.length > 0) {
-      setActive(conv[0]);
+    if (!offerId) {
+      setActive(null);
+      return;
     }
-  }, [conv, active]);
+    const next = conv.find((c) => c.offer_id === offerId) || null;
+    if (next && next.offer_id !== active?.offer_id) {
+      setActive(next);
+    }
+  }, [conv, offerId, active?.offer_id]);
 
   useEffect(() => {
-    if (!active) return;
+    if (!active?.offer_id) return;
     loadMessages(active.offer_id);
     const t = setInterval(() => loadMessages(active.offer_id), 10000);
     return () => clearInterval(t);
   }, [active]);
+
+  useEffect(() => {
+    if (!offerId && conv.length > 0 && !active) {
+      setActive(null);
+    }
+  }, [offerId, conv.length, active]);
+
+  const selectedConversation = useMemo(() => {
+    if (!offerId) return null;
+    return conv.find((c) => c.offer_id === offerId) || active || null;
+  }, [offerId, conv, active]);
+
+  const openConversation = (conversation) => {
+    setActive(conversation);
+    navigate(`/app/messages/${conversation.offer_id}`);
+  };
+
+  const goBackToList = () => {
+    setActive(null);
+    setText("");
+    navigate("/app/messages");
+  };
 
   const send = async () => {
     if (!text.trim() || !active) return;
@@ -65,9 +94,13 @@ export default function Messages() {
     <div className="space-y-4" data-testid="messages-page">
       <div>
         <p className="uppercase text-xs tracking-widest text-[#1F4E3D] font-bold">Messagerie</p>
-        <h1 className="font-['Manrope'] font-extrabold text-3xl mt-1">Mes conversations</h1>
+        <h1 className="font-['Manrope'] font-extrabold text-3xl mt-1">
+          {selectedConversation ? "Conversation" : "Mes conversations"}
+        </h1>
         <p className="text-sm text-[#6C6C6C] mt-1">
-          Une conversation par offre. Négociez prix, délais, livrables.
+          {selectedConversation
+            ? "Échangez sur la mission, les prix, les délais et les livrables."
+            : "Une conversation par offre. Choisissez une discussion pour ouvrir le fil."}
         </p>
       </div>
 
@@ -81,55 +114,84 @@ export default function Messages() {
         </div>
       )}
 
-      <div className="grid gap-3 lg:grid-cols-[320px_minmax(0,1fr)] items-start">
-        <div className="space-y-2 order-2 lg:order-1 max-h-[36vh] lg:max-h-[calc(100dvh-240px)] overflow-y-auto pr-1">
+      {!offerId ? (
+        <div className="space-y-2 max-h-[calc(100dvh-240px)] overflow-y-auto pr-1">
           {conv.map((c) => (
             <button
               key={c.offer_id}
-              onClick={() => setActive(c)}
+              onClick={() => openConversation(c)}
               data-testid={`conv-${c.offer_id}`}
-              className={`block w-full text-left card-flat p-3 transition ${active?.offer_id === c.offer_id ? "border-[#C84B31] bg-[#C84B31]/5" : ""}`}
+              className="block w-full text-left card-flat p-3 transition hover:border-[#C84B31] hover:bg-[#C84B31]/5"
             >
-              <div className="flex items-center justify-between">
-                <div className="font-['Manrope'] font-bold truncate">{c.mission_title}</div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-['Manrope'] font-bold truncate">{c.mission_title}</div>
+                  <div className="text-xs text-[#6C6C6C] mt-0.5 truncate">
+                    {user.role === "merchant" ? `Offre de ${c.assistant_name}` : `Mission de ${c.merchant_name}`}
+                    {c.price_fcfa && ` · ${fmtFCFA(c.price_fcfa)}`}
+                  </div>
+                </div>
                 <span className="text-xs text-[#6C6C6C] shrink-0">{STATUS_LABELS[c.mission_status]}</span>
               </div>
-              <div className="text-xs text-[#6C6C6C] mt-0.5 truncate">
-                {user.role === "merchant" ? `Offre de ${c.assistant_name}` : `Mission de ${c.merchant_name}`}
-                {c.price_fcfa && ` · ${fmtFCFA(c.price_fcfa)}`}
-              </div>
               {c.last_message ? (
-                <div className="text-sm text-[#2D2D2D]/80 mt-1 line-clamp-1">{c.last_message.body}</div>
+                <div className="text-sm text-[#2D2D2D]/80 mt-2 line-clamp-2">{c.last_message.body}</div>
               ) : (
-                <div className="text-sm text-[#6C6C6C] mt-1 italic">Pas encore de messages</div>
+                <div className="text-sm text-[#6C6C6C] mt-2 italic">Pas encore de messages</div>
               )}
+              <div className="text-xs text-[#C84B31] mt-2 font-semibold">Ouvrir la discussion →</div>
             </button>
           ))}
         </div>
+      ) : (
+        <div className="card-flat p-4 flex flex-col min-h-[56vh] lg:h-[calc(100dvh-240px)]" data-testid="messages-chat">
+          <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={goBackToList}
+              className="rounded-full h-9 border-[#1F4E3D]/20 text-[#1F4E3D] hover:bg-[#1F4E3D]/5"
+            >
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              Retour aux discussions
+            </Button>
+            {selectedConversation ? (
+              <Link to={`/app/missions/${selectedConversation.mission_slug || selectedConversation.mission_id}`} className="text-xs text-[#C84B31]">
+                Voir la mission →
+              </Link>
+            ) : (
+              <span className="text-xs text-[#6C6C6C]">Chargement...</span>
+            )}
+          </div>
 
-        {active && (
-          <div className="card-flat p-4 flex flex-col min-h-[56vh] lg:h-[calc(100dvh-240px)] order-1 lg:order-2" data-testid="messages-chat">
-            <div className="font-['Manrope'] font-bold mb-2 flex items-center justify-between">
-              <span>{active.mission_title}</span>
-              <Link to={`/app/missions/${active.mission_slug || active.mission_id}`} className="text-xs text-[#C84B31]">Voir la mission →</Link>
-            </div>
-            <div className="flex-1 space-y-2 overflow-y-auto" data-testid="chat-list">
-              {messages.length === 0 && <div className="text-sm text-[#6C6C6C]">Aucun message.</div>}
-              {messages.map((m) => {
-                const me = m.sender_id === user.id;
-                return (
-                  <div key={m.id} className={`flex ${me ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[80%] px-3 py-2 ${me ? "bubble-self" : "bubble-other"}`}>
-                      {!me && <div className="text-xs font-bold text-[#1F4E3D]">{m.sender_name}</div>}
-                      <div className="text-sm whitespace-pre-wrap">{m.body}</div>
-                      <div className="text-[10px] text-[#6C6C6C] text-right mt-1">
-                        {new Date(m.created_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+          <div className="font-['Manrope'] font-bold mb-2">
+            {selectedConversation?.mission_title || "Conversation"}
+          </div>
+
+          <div className="flex-1 space-y-2 overflow-y-auto" data-testid="chat-list">
+            {!selectedConversation ? (
+              <div className="text-sm text-[#6C6C6C]">Chargement de la conversation...</div>
+            ) : (
+              <>
+                {messages.length === 0 && <div className="text-sm text-[#6C6C6C]">Aucun message.</div>}
+                {messages.map((m) => {
+                  const me = m.sender_id === user.id;
+                  return (
+                    <div key={m.id} className={`flex ${me ? "justify-end" : "justify-start"}`}>
+                      <div className={`max-w-[80%] px-3 py-2 ${me ? "bubble-self" : "bubble-other"}`}>
+                        {!me && <div className="text-xs font-bold text-[#1F4E3D]">{m.sender_name}</div>}
+                        <div className="text-sm whitespace-pre-wrap">{m.body}</div>
+                        <div className="text-[10px] text-[#6C6C6C] text-right mt-1">
+                          {new Date(m.created_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </>
+            )}
+          </div>
+
+          {selectedConversation && (
             <div className="flex items-center gap-2 mt-3">
               <Input
                 value={text}
@@ -143,9 +205,9 @@ export default function Messages() {
                 <Send className="w-4 h-4" />
               </Button>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

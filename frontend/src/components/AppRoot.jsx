@@ -91,6 +91,7 @@ export default function AppRoot() {
               <Route path="missions/create" element={<MissionCreate />} />
               <Route path="missions/:id" element={<MissionDetail />} />
               <Route path="messages" element={<Messages />} />
+              <Route path="messages/:offerId" element={<Messages />} />
               <Route path="notifications" element={<Notifications />} />
               <Route path="forum" element={<Forum />} />
               <Route path="forum/new" element={<ForumNewQuestion />} />

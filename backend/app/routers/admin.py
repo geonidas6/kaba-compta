@@ -1,6 +1,7 @@
 import os
 import io
 import uuid
+import secrets
 import base64
 import zipfile
 import json
@@ -20,6 +21,7 @@ from app.config import JWT_SECRET, JWT_ALGORITHM, logger
 from app.helpers import (
     require_admin,
     decrypt_bytes,
+    _coerce_bool,
     now_iso,
     normalize_phone,
     get_platform_config,
@@ -136,6 +138,15 @@ def normalize_cronicle_url(url: str) -> str:
     return url
 
 
+def mask_secret(value: Optional[str]) -> str:
+    value = (value or "").strip()
+    if not value:
+        return ""
+    if len(value) <= 12:
+        return "•" * len(value)
+    return value[:8] + "•" * (len(value) - 12) + value[-4:]
+
+
 def cronicle_json_response(response: httpx.Response, context: str, cronicle_url: str = "", request_info: Optional[dict] = None) -> dict:
     try:
         return response.json()
@@ -178,6 +189,10 @@ def cronicle_payload(job: dict) -> dict:
         "detached": 0,
         "notes": job["description"],
     }
+
+
+def _openwa_ui_base_url(url: str) -> str:
+    return normalize_openwa_base_url(url).rstrip("/")
 
 
 @router.get("/stats")
@@ -382,29 +397,34 @@ async def admin_settings_get(_: dict = Depends(require_admin)):
     platform = await db.app_settings.find_one({"_id": "platform"}) or {}
     public_url = platform.get("public_backend_url") or os.environ.get("PUBLIC_BACKEND_URL", "")
 
-    def mask(s: str) -> str:
-        if not s:
-            return ""
-        if len(s) <= 12:
-            return "•" * len(s)
-        return s[:8] + "•" * (len(s) - 12) + s[-4:]
-
     return {
         "platform": {
-            "premium_enabled": platform.get("premium_enabled", False),
-            "premium_price_fcfa": platform.get("premium_price_fcfa", 2000),
-            "premium_duration_days": platform.get("premium_duration_days", 30),
-            "review_visibility_paywall": platform.get("review_visibility_paywall", False),
-            "public_backend_url": public_url,
+        "premium_enabled": platform.get("premium_enabled", False),
+        "premium_price_fcfa": platform.get("premium_price_fcfa", 2000),
+        "premium_duration_days": platform.get("premium_duration_days", 30),
+        "review_visibility_paywall": platform.get("review_visibility_paywall", False),
+        "public_backend_url": public_url,
+        "auth_dev_mode": _coerce_bool(platform.get("auth_dev_mode"), (os.environ.get("ENV_ENV") or os.environ.get("NODE_ENV") or "prod").strip().lower() in ("dev", "development", "local", "test")),
+        "smtp_host": platform.get("smtp_host") or os.environ.get("SMTP_HOST", ""),
+            "smtp_port": platform.get("smtp_port") or int(os.environ.get("SMTP_PORT", "587") or 587),
+            "smtp_user": platform.get("smtp_user") or os.environ.get("SMTP_USER", ""),
+            "smtp_from": platform.get("smtp_from") or os.environ.get("SMTP_FROM", os.environ.get("SMTP_USER", "")),
+            "smtp_use_tls": _coerce_bool(platform.get("smtp_use_tls"), os.environ.get("SMTP_USE_TLS", "true").lower() not in ("0", "false", "no")),
+            "smtp_use_ssl": _coerce_bool(platform.get("smtp_use_ssl"), os.environ.get("SMTP_USE_SSL", "false").lower() in ("1", "true", "yes")),
+            "smtp_host_set": bool(platform.get("smtp_host") or os.environ.get("SMTP_HOST", "")),
+            "smtp_user_set": bool(platform.get("smtp_user") or os.environ.get("SMTP_USER", "")),
+            "smtp_from_set": bool(platform.get("smtp_from") or os.environ.get("SMTP_FROM", os.environ.get("SMTP_USER", ""))),
+            "smtp_password_set": bool(platform.get("smtp_password") or os.environ.get("SMTP_PASSWORD", "")),
+            "smtp_password_masked": mask_secret(platform.get("smtp_password") or os.environ.get("SMTP_PASSWORD", "")),
             "whatsapp_service_url": platform.get("whatsapp_service_url", os.environ.get("WHATSAPP_SERVICE_URL", "")),
             "whatsapp_session_id": platform.get("whatsapp_session_id", "default"),
             "whatsapp_api_key_set": bool(platform.get("whatsapp_api_key") or os.environ.get("WHATSAPP_API_KEY", "")),
-            "whatsapp_api_key_masked": mask(platform.get("whatsapp_api_key") or os.environ.get("WHATSAPP_API_KEY", "")),
+            "whatsapp_api_key_masked": mask_secret(platform.get("whatsapp_api_key") or os.environ.get("WHATSAPP_API_KEY", "")),
             "whatsapp_verify_ssl": platform.get("whatsapp_verify_ssl", True),
             "notifications_enabled": platform.get("notifications_enabled", True),
             "cronicle_url": platform.get("cronicle_url", os.environ.get("CRONICLE_URL", "")),
             "cronicle_api_key_set": bool(platform.get("cronicle_api_key") or os.environ.get("CRONICLE_API_KEY", "")),
-            "cronicle_api_key_masked": mask(platform.get("cronicle_api_key") or os.environ.get("CRONICLE_API_KEY", "")),
+            "cronicle_api_key_masked": mask_secret(platform.get("cronicle_api_key") or os.environ.get("CRONICLE_API_KEY", "")),
             "cronicle_jobs": CRONICLE_JOBS,
         }
     }
@@ -418,6 +438,30 @@ async def admin_settings_platform(data: PlatformSettingsUpdate, admin: dict = De
     current["updated_by"] = admin["id"]
     await db.app_settings.update_one({"_id": "platform"}, {"$set": current}, upsert=True)
     return {"updated": True, "fields": list(update.keys())}
+
+
+@router.post("/openwa/login-link")
+async def admin_openwa_login_link(_: dict = Depends(require_admin)):
+    cfg = await get_platform_config()
+    wa_url = cfg["whatsapp_service_url"]
+    wa_key = cfg["whatsapp_api_key"]
+    if not wa_url or not wa_key:
+        raise HTTPException(status_code=400, detail="WhatsApp non configuré dans Paramètres")
+
+    ticket = secrets.token_urlsafe(32)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=3)
+    await db.openwa_login_tickets.insert_one({
+        "id": ticket,
+        "expires_at": expires_at.isoformat(),
+        "used_at": None,
+        "created_at": now_iso(),
+    })
+    ui_base = _openwa_ui_base_url(wa_url)
+    return {
+        "ticket": ticket,
+        "url": f"{ui_base}/?ticket={ticket}",
+        "expires_at": expires_at.isoformat(),
+    }
 
 @router.post("/cronicle/redeploy")
 async def admin_cronicle_redeploy(admin: dict = Depends(require_admin)):
@@ -717,9 +761,7 @@ async def admin_whatsapp_test(data: WhatsAppTestRequest, _: dict = Depends(requi
     body = data.message or (
         f"✅ Test Kaba-Compta : votre configuration WhatsApp fonctionne ! Envoyé le {now_iso()}."
     )
-    base = wa_url.rstrip("/")
-    if base.endswith("/api"):
-        base = base[:-4]
+    base = normalize_openwa_base_url(wa_url)
     endpoint = f"{base}/api/sessions/{wa_session}/messages/send-text"
     payload = {"chatId": wa_phone, "text": body}
     sent_request = {
@@ -766,33 +808,6 @@ async def admin_whatsapp_test(data: WhatsAppTestRequest, _: dict = Depends(requi
             "phone_sent_to": wa_phone,
             "sent": sent_request,
         }
-
-@router.get("/whatsapp/status")
-async def admin_whatsapp_status(_: dict = Depends(require_admin)):
-    cfg = await get_platform_config()
-    wa_url = cfg["whatsapp_service_url"]
-    wa_key = cfg["whatsapp_api_key"]
-    wa_session = cfg["whatsapp_session_id"] or "default"
-    if not wa_url or not wa_key:
-        return {"configured": False}
-    base = wa_url.rstrip("/")
-    if base.endswith("/api"):
-        base = base[:-4]
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=10.0, verify=cfg["whatsapp_verify_ssl"]) as hc:
-            r = await hc.get(
-                f"{base}/api/sessions/{wa_session}",
-                headers={"X-API-Key": wa_key},
-            )
-        return {
-            "configured": True,
-            "status_code": r.status_code,
-            "endpoint": f"{base}/api/sessions/{wa_session}",
-            "data": r.json() if "application/json" in r.headers.get("content-type", "") else r.text[:500],
-        }
-    except Exception as e:
-        return {"configured": True, "error": str(e)}
 
 @router.post("/broadcast")
 async def admin_broadcast(data: BroadcastRequest, admin: dict = Depends(require_admin)):

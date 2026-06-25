@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Settings, Link2, Crown, MessageCircle, Send, ShieldOff, Star, Database, Download, Upload, RefreshCw, FlaskConical, Trash2 } from "lucide-react";
+import { Settings, Link2, Crown, MessageCircle, Send, ShieldOff, Star, Database, Download, Upload, RefreshCw, FlaskConical, Trash2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,6 +15,14 @@ export default function AdminSettings() {
     premium_duration_days: "",
     review_visibility_paywall: false,
     public_backend_url: "",
+    auth_dev_mode: false,
+    smtp_host: "",
+    smtp_port: "587",
+    smtp_user: "",
+    smtp_password: "",
+    smtp_from: "",
+    smtp_use_tls: true,
+    smtp_use_ssl: false,
     whatsapp_service_url: "",
     whatsapp_api_key: "",
     whatsapp_session_id: "default",
@@ -39,6 +47,29 @@ export default function AdminSettings() {
   const [restoringFile, setRestoringFile] = useState(false);
 
   const prettyJson = (value) => JSON.stringify(value ?? null, null, 2);
+
+  const getOpenWaUiUrl = () => {
+    const base = (pf.whatsapp_service_url || "").trim();
+    if (!base) return "";
+    return base.replace(/\/api\/?$/i, "");
+  };
+
+  const openOpenWa = async () => {
+    try {
+      const r = await api.post("/admin/openwa/login-link");
+      const url = r.data?.url;
+      if (!url) throw new Error("URL manquante");
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      const fallback = getOpenWaUiUrl();
+      if (fallback) {
+        toast.warning("Ouverture directe d'OpenWA, l'auto-connexion n'a pas pu être préparée");
+        window.open(fallback, "_blank", "noopener,noreferrer");
+        return;
+      }
+      toast.error(err?.response?.data?.detail || "Impossible d'ouvrir OpenWA");
+    }
+  };
 
   const loadBackups = async () => {
     setLoadingBackups(true);
@@ -173,12 +204,20 @@ export default function AdminSettings() {
   const load = async () => {
     const r = await api.get("/admin/settings");
     setS(r.data);
-    setPf({
+    const nextPf = {
       premium_enabled: r.data.platform.premium_enabled ?? false,
       premium_price_fcfa: r.data.platform.premium_price_fcfa ?? "",
       premium_duration_days: r.data.platform.premium_duration_days ?? "",
       review_visibility_paywall: r.data.platform.review_visibility_paywall ?? false,
       public_backend_url: r.data.platform.public_backend_url || "",
+      auth_dev_mode: r.data.platform.auth_dev_mode ?? false,
+      smtp_host: r.data.platform.smtp_host || "",
+      smtp_port: r.data.platform.smtp_port ?? "587",
+      smtp_user: r.data.platform.smtp_user || "",
+      smtp_password: "",
+      smtp_from: r.data.platform.smtp_from || "",
+      smtp_use_tls: r.data.platform.smtp_use_tls ?? true,
+      smtp_use_ssl: r.data.platform.smtp_use_ssl ?? false,
       whatsapp_service_url: r.data.platform.whatsapp_service_url || "",
       whatsapp_api_key: "",
       whatsapp_session_id: r.data.platform.whatsapp_session_id || "default",
@@ -186,7 +225,8 @@ export default function AdminSettings() {
       notifications_enabled: r.data.platform.notifications_enabled ?? true,
       cronicle_url: r.data.platform.cronicle_url || "",
       cronicle_api_key: "",
-    });
+    };
+    setPf(nextPf);
   };
 
   useEffect(() => {
@@ -215,6 +255,13 @@ export default function AdminSettings() {
         review_visibility_paywall: pf.review_visibility_paywall,
         whatsapp_service_url: whatsappServiceUrl,
         public_backend_url: publicBackendUrl,
+        auth_dev_mode: pf.auth_dev_mode,
+        smtp_host: pf.smtp_host.trim(),
+        smtp_port: pf.smtp_port === "" ? null : parseInt(pf.smtp_port, 10),
+        smtp_user: pf.smtp_user.trim(),
+        smtp_from: pf.smtp_from.trim(),
+        smtp_use_tls: pf.smtp_use_tls,
+        smtp_use_ssl: pf.smtp_use_ssl,
         whatsapp_session_id: pf.whatsapp_session_id.trim() || "default",
         whatsapp_verify_ssl: pf.whatsapp_verify_ssl,
         notifications_enabled: pf.notifications_enabled,
@@ -222,6 +269,7 @@ export default function AdminSettings() {
       };
       if (pf.premium_price_fcfa !== "") payload.premium_price_fcfa = parseFloat(pf.premium_price_fcfa);
       if (pf.premium_duration_days !== "") payload.premium_duration_days = parseInt(pf.premium_duration_days, 10);
+      if (pf.smtp_password) payload.smtp_password = pf.smtp_password;
       if (pf.whatsapp_api_key) payload.whatsapp_api_key = pf.whatsapp_api_key.trim();
       if (pf.cronicle_api_key) payload.cronicle_api_key = pf.cronicle_api_key.trim();
       await api.put("/admin/settings/platform", payload);
@@ -417,6 +465,128 @@ export default function AdminSettings() {
           </div>
         </div>
 
+        {/* Email */}
+        <div className="border-t border-[#EAE5D9] pt-5 space-y-4">
+          <div className="flex items-center gap-2">
+            <Send className="w-5 h-5 text-[#1F4E3D]" />
+            <h2 className="font-['Manrope'] font-bold text-lg">Emails SMTP</h2>
+          </div>
+          <p className="text-sm text-[#6C6C6C]">
+            Les paramètres SMTP sont stockés en base et utilisés pour les emails transactionnels.
+          </p>
+          <div className="grid md:grid-cols-2 gap-3">
+            <div>
+              <Label>SMTP_HOST</Label>
+              <Input
+                data-testid="pf-smtp-host-input"
+                value={pf.smtp_host}
+                onChange={(e) => setPf({ ...pf, smtp_host: e.target.value })}
+                className="h-11"
+                placeholder="smtp.gmail.com"
+              />
+            </div>
+            <div>
+              <Label>SMTP_PORT</Label>
+              <Input
+                type="number"
+                min="1"
+                data-testid="pf-smtp-port-input"
+                value={pf.smtp_port}
+                onChange={(e) => setPf({ ...pf, smtp_port: e.target.value })}
+                className="h-11"
+                placeholder="587"
+              />
+            </div>
+            <div>
+              <Label>SMTP_USER</Label>
+              <Input
+                data-testid="pf-smtp-user-input"
+                value={pf.smtp_user}
+                onChange={(e) => setPf({ ...pf, smtp_user: e.target.value })}
+                className="h-11"
+                placeholder="user@example.com"
+              />
+            </div>
+            <div>
+              <Label>SMTP_PASSWORD</Label>
+              <Input
+                type="password"
+                data-testid="pf-smtp-password-input"
+                value={pf.smtp_password}
+                onChange={(e) => setPf({ ...pf, smtp_password: e.target.value })}
+                className="h-11 font-mono"
+                placeholder={s.platform.smtp_password_set ? s.platform.smtp_password_masked || "•••••" : "mot de passe SMTP"}
+                autoComplete="off"
+              />
+            </div>
+            <div>
+              <Label>SMTP_FROM</Label>
+              <Input
+                data-testid="pf-smtp-from-input"
+                value={pf.smtp_from}
+                onChange={(e) => setPf({ ...pf, smtp_from: e.target.value })}
+                className="h-11"
+                placeholder="noreply@kaba-compta.tg"
+              />
+            </div>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="flex items-start gap-3 p-3 rounded-lg bg-[#FAF8F5] border border-[#EAE5D9]">
+              <Switch
+                checked={pf.smtp_use_tls}
+                onCheckedChange={(v) => setPf({ ...pf, smtp_use_tls: v })}
+                data-testid="pf-smtp-tls-switch"
+                className="mt-1"
+              />
+              <div className="flex-1 text-sm">
+                <div className="font-semibold">SMTP_USE_TLS</div>
+                <p className="text-xs text-[#6C6C6C]">Active STARTTLS si le serveur le demande.</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-3 rounded-lg bg-[#FAF8F5] border border-[#EAE5D9]">
+              <Switch
+                checked={pf.smtp_use_ssl}
+                onCheckedChange={(v) => setPf({ ...pf, smtp_use_ssl: v })}
+                data-testid="pf-smtp-ssl-switch"
+                className="mt-1"
+              />
+              <div className="flex-1 text-sm">
+                <div className="font-semibold">SMTP_USE_SSL</div>
+                <p className="text-xs text-[#6C6C6C]">Utilise une connexion SSL directe.</p>
+              </div>
+            </div>
+          </div>
+          <div className="text-xs text-[#6C6C6C]">
+            {s.platform.smtp_host_set ? "SMTP configuré" : "Aucune configuration SMTP enregistrée"}
+            {s.platform.smtp_user_set ? " • utilisateur défini" : ""}
+            {s.platform.smtp_from_set ? " • from défini" : ""}
+          </div>
+        </div>
+
+        {/* Auth mode */}
+        <div className="border-t border-[#EAE5D9] pt-5 space-y-3">
+          <div className="flex items-center gap-2">
+            <ShieldOff className="w-5 h-5 text-[#C84B31]" />
+            <h2 className="font-['Manrope'] font-bold text-lg">Mode de connexion</h2>
+          </div>
+          <div className="flex items-start gap-3 p-4 rounded-xl bg-[#FAF8F5] border border-[#EAE5D9]">
+            <Switch
+              checked={pf.auth_dev_mode}
+              onCheckedChange={(v) => setPf({ ...pf, auth_dev_mode: v })}
+              data-testid="auth-dev-mode-switch"
+              className="mt-1"
+            />
+            <div className="flex-1">
+              <div className="font-['Manrope'] font-bold">
+                {pf.auth_dev_mode ? "Mode développement activé" : "Mode production"}
+              </div>
+              <p className="text-xs text-[#6C6C6C] mt-1">
+                Quand activé, le code OTP de connexion s’affiche à l’écran au lieu d’être envoyé sur WhatsApp.
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Infrastructure */}
         <div className="border-t border-[#EAE5D9] pt-5 space-y-4">
           <div className="flex items-center gap-2">
@@ -498,9 +668,21 @@ export default function AdminSettings() {
             <div className="mt-4 p-4 rounded-lg bg-[#1F4E3D]/5 border border-[#1F4E3D]/20">
               <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
                 <div className="font-['Manrope'] font-bold text-sm">Tester l'envoi WhatsApp</div>
-                {(!s.platform.whatsapp_api_key_set || !pf.whatsapp_service_url) && (
-                  <span className="text-xs text-[#C84B31] font-semibold">Enregistrez l'URL OpenWA et la clé API avant le test</span>
-                )}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {(!s.platform.whatsapp_api_key_set || !pf.whatsapp_service_url) && (
+                    <span className="text-xs text-[#C84B31] font-semibold">Enregistrez l'URL OpenWA et la clé API avant le test</span>
+                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-full h-9 border-[#1F4E3D]/20 text-[#1F4E3D] hover:bg-[#1F4E3D]/5"
+                    onClick={openOpenWa}
+                    data-testid="openwa-open-btn"
+                  >
+                    <ExternalLink className="w-4 h-4 mr-1" />
+                    Ouvrir OpenWA
+                  </Button>
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Input
@@ -546,6 +728,7 @@ export default function AdminSettings() {
                   </div>
               )}
             </div>
+
           </div>
         </div>
 

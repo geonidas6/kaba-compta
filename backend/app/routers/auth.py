@@ -1,5 +1,6 @@
 import base64
 import io
+import os
 import random
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -28,6 +29,7 @@ from app.helpers import (
     verify_password,
     create_token,
     get_current_user,
+    is_auth_dev_mode,
     now_iso,
     send_whatsapp,
     apply_notification_template,
@@ -53,8 +55,11 @@ def _parse_dt(value: str) -> datetime:
 def _otp_code() -> str:
     return f"{random.randint(0, 999999):06d}"
 
-async def _send_otp(phone: str, code: str, reason: str = "connexion", *, allow_dev_code: bool = False) -> tuple[Optional[str], str]:
-    logger.info(f"[OTP] reason={reason} phone={phone} code={code}")
+async def _send_otp(phone: str, code: str, reason: str = "connexion") -> str:
+    dev_mode = await is_auth_dev_mode()
+    logger.info(
+        f"[OTP] reason={reason} phone={phone} code={'******' if not dev_mode else code}"
+    )
     template_key = "otp_phone_verification" if reason == "verification_telephone" else "otp_login"
     default_message = (
         f"🔐 Votre code Kaba-Compta est : *{code}*\n\n"
@@ -74,14 +79,14 @@ async def _send_otp(phone: str, code: str, reason: str = "connexion", *, allow_d
     )
     if not enabled:
         raise HTTPException(status_code=503, detail="L'envoi des codes OTP WhatsApp est désactivé par l'administrateur.")
+    if dev_mode:
+        return "screen"
     sent = await send_whatsapp(phone, message_body or default_message)
     if sent:
-        return None, "whatsapp"
-    if allow_dev_code:
-        return code, "whatsapp_dev"
+        return "whatsapp"
     raise HTTPException(
         status_code=503,
-        detail="Le service WhatsApp n'est pas prêt. Reconnectez la session WhatsApp dans OpenWA puis réessayez.",
+        detail="Impossible d'envoyer le code WhatsApp. Reconnectez la session WhatsApp dans OpenWA puis réessayez plus tard.",
     )
 
 def _auth_payload(user: dict) -> dict:
@@ -89,6 +94,7 @@ def _auth_payload(user: dict) -> dict:
     return {"token": token, "user": public_user_doc(user)}
 
 async def _create_login_challenge(user: dict, methods: list[str]) -> dict:
+    dev_mode = await is_auth_dev_mode()
     challenge_id = str(uuid.uuid4())
     otp_code = _otp_code() if "whatsapp_otp" in methods else None
     doc = {
@@ -101,17 +107,19 @@ async def _create_login_challenge(user: dict, methods: list[str]) -> dict:
         "created_at": now_iso(),
     }
     await db.login_challenges.insert_one(doc)
-    dev_code = None
     channel = None
+    dev_otp_code = None
     if otp_code:
-        dev_code, channel = await _send_otp(user["phone"], otp_code, "connexion", allow_dev_code=False)
+        channel = await _send_otp(user["phone"], otp_code, "connexion")
+        if dev_mode:
+            dev_otp_code = otp_code
     return {
         "requires_2fa": True,
         "challenge_id": challenge_id,
         "methods": methods,
         "phone": user["phone"],
-        "dev_code": dev_code,
         "channel": channel,
+        "dev_otp_code": dev_otp_code,
     }
 
 @router.post("/register", response_model=AuthResponse)
@@ -198,6 +206,7 @@ async def login_verify(data: LoginVerifyRequest):
 
 @router.post("/otp/send")
 async def otp_send(data: OTPSendRequest):
+    dev_mode = await is_auth_dev_mode()
     phone = normalize_phone(data.phone)
     code = _otp_code()
     await db.otps.update_one(
@@ -210,8 +219,8 @@ async def otp_send(data: OTPSendRequest):
         }},
         upsert=True,
     )
-    dev_code, channel = await _send_otp(phone, code, "verification_telephone", allow_dev_code=True)
-    return {"sent": True, "dev_code": dev_code, "channel": channel}
+    channel = await _send_otp(phone, code, "verification_telephone")
+    return {"sent": True, "channel": channel, "dev_otp_code": code if dev_mode else None}
 
 @router.post("/otp/verify")
 async def otp_verify(data: OTPVerifyRequest):

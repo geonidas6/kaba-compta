@@ -1,8 +1,15 @@
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Response, HTTPException
 from app.helpers import get_platform_config, now_iso, public_profile_name, ensure_unique_user_slug, ensure_unique_forum_slug
 from app.database import db
 from datetime import datetime, timezone
 import os
+
+
+def _parse_iso_dt(value: str):
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 router = APIRouter(tags=["config"])
 
@@ -14,6 +21,29 @@ async def public_config():
         "premium_price_fcfa": cfg["premium_price_fcfa"],
         "premium_duration_days": cfg["premium_duration_days"],
     }
+
+
+@router.get("/public/openwa/login-exchange")
+async def public_openwa_login_exchange(ticket: str):
+    ticket_doc = await db.openwa_login_tickets.find_one({"id": ticket})
+    if not ticket_doc:
+        raise HTTPException(status_code=404, detail="Ticket introuvable")
+    if ticket_doc.get("used_at"):
+        raise HTTPException(status_code=410, detail="Ticket déjà utilisé")
+    expires_at = ticket_doc.get("expires_at")
+    if not expires_at:
+        raise HTTPException(status_code=410, detail="Ticket expiré")
+    if _parse_iso_dt(expires_at) < datetime.now(timezone.utc):
+        await db.openwa_login_tickets.update_one({"id": ticket}, {"$set": {"used_at": now_iso()}})
+        raise HTTPException(status_code=410, detail="Ticket expiré")
+
+    cfg = await get_platform_config()
+    wa_key = cfg["whatsapp_api_key"]
+    if not wa_key:
+        raise HTTPException(status_code=400, detail="WhatsApp non configuré")
+
+    await db.openwa_login_tickets.update_one({"id": ticket}, {"$set": {"used_at": now_iso()}})
+    return {"api_key": wa_key}
 
 
 def _frontend_url() -> str:

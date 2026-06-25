@@ -56,6 +56,7 @@ function LoginForm() {
   const [challenge, setChallenge] = useState(null);
   const [method, setMethod] = useState("totp");
   const [code, setCode] = useState("");
+  const [devOtpCode, setDevOtpCode] = useState("");
   const { login } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -83,7 +84,14 @@ function LoginForm() {
         setChallenge(r.data);
         setMethod(nextMethod);
         setCode("");
-        toast.info(nextMethod === "whatsapp_otp" ? "Code envoyé sur WhatsApp" : "Entrez le code de votre application d'authentification");
+        setDevOtpCode(r.data.dev_otp_code || "");
+        toast.info(
+          r.data.dev_otp_code && nextMethod === "whatsapp_otp"
+            ? `Mode développement : Votre code est ${r.data.dev_otp_code}`
+            : nextMethod === "whatsapp_otp"
+              ? "Code envoyé sur WhatsApp"
+              : "Entrez le code de votre application d'authentification",
+        );
         return;
       }
       finishLogin(r.data.token, r.data.user);
@@ -140,6 +148,12 @@ function LoginForm() {
             : "Ouvrez votre application d'authentification et saisissez le code à 6 chiffres."}
         </div>
 
+        {devOtpCode && method === "whatsapp_otp" && (
+          <div className="rounded-xl border border-[#C84B31] bg-[#C84B31]/10 p-3 text-sm text-[#A83E28]">
+            <strong>Mode développement :</strong> Votre code est <span className="font-mono font-bold">{devOtpCode}</span>
+          </div>
+        )}
+
 
         <div className="space-y-1.5">
           <Label htmlFor="login-2fa-code">Code <span className="text-[#C84B31]">*</span></Label>
@@ -158,7 +172,14 @@ function LoginForm() {
         <Button type="submit" disabled={loading} data-testid="login-2fa-submit-btn" className="w-full h-12 bg-[#C84B31] hover:bg-[#A83E28] text-white rounded-xl">
           {loading ? "Vérification..." : "Valider et accéder"} <ArrowRight className="ml-2 w-4 h-4" />
         </Button>
-        <button type="button" onClick={() => setChallenge(null)} className="w-full text-sm text-[#6C6C6C] hover:text-[#C84B31] py-2">
+        <button
+          type="button"
+          onClick={() => {
+            setChallenge(null);
+            setDevOtpCode("");
+          }}
+          className="w-full text-sm text-[#6C6C6C] hover:text-[#C84B31] py-2"
+        >
           Revenir à la connexion
         </button>
       </form>
@@ -224,7 +245,8 @@ function RegisterForm({ initialRole, onDone }) {
   const [email, setEmail] = useState("");
   const [city, setCity] = useState("Lomé");
   const [otp, setOtp] = useState("");
-  const [devCode, setDevCode] = useState(null);
+  const [otpError, setOtpError] = useState("");
+  const [devOtpCode, setDevOtpCode] = useState("");
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -243,13 +265,20 @@ function RegisterForm({ initialRole, onDone }) {
         email: email || null,
         city,
       });
-      login(r.data.token, r.data.user);
       const otpRes = await api.post("/auth/otp/send", { phone });
-      setDevCode(otpRes.data.dev_code);
+      login(r.data.token, r.data.user);
+      setOtpError("");
+      setDevOtpCode(otpRes.data?.dev_otp_code || "");
       setStep(2);
-      toast.success("Compte créé. Vérifiez votre numéro via WhatsApp.");
+      toast.success(
+        otpRes.data?.dev_otp_code
+          ? `Mode développement : Votre code est ${otpRes.data.dev_otp_code}`
+          : "Compte créé. Vérifiez votre numéro via WhatsApp.",
+      );
     } catch (err) {
-      toast.error(err?.response?.data?.detail || "Erreur d'inscription");
+      const message = err?.response?.data?.detail || "Erreur d'inscription";
+      setOtpError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -260,7 +289,7 @@ function RegisterForm({ initialRole, onDone }) {
     setLoading(true);
     try {
       await api.post("/auth/otp/verify", { phone, code: otp });
-       toast.success("Numéro vérifié ! Bienvenue sur Kaba-Compta.");
+      toast.success("Numéro vérifié ! Bienvenue sur Kaba-Compta.");
       const redirectTo = searchParams.get("redirect");
       if (redirectTo) {
         navigate(redirectTo);
@@ -290,13 +319,21 @@ function RegisterForm({ initialRole, onDone }) {
           <MessageCircle className="w-10 h-10 text-[#1F4E3D]" />
           <div>
             <h1 className="font-['Manrope'] font-bold text-xl">Vérification</h1>
-            <p className="text-sm text-[#6C6C6C]">Un code à 6 chiffres a été envoyé sur WhatsApp.</p>
+            <p className="text-sm text-[#6C6C6C]">
+              {devOtpCode ? "Mode développement activé." : "Un code à 6 chiffres a été envoyé sur WhatsApp."}
+            </p>
           </div>
         </div>
 
-        {devCode && (
-          <div className="p-3 rounded-xl bg-[#ECA869]/15 border border-[#ECA869] text-sm" data-testid="dev-otp-code">
-            <span className="font-bold">Mode développement :</span> Votre code est <span className="font-mono font-bold">{devCode}</span>
+        {devOtpCode && (
+          <div className="rounded-xl border border-[#C84B31] bg-[#C84B31]/10 p-3 text-sm text-[#A83E28]">
+            <strong>Mode développement :</strong> Votre code est <span className="font-mono font-bold">{devOtpCode}</span>
+          </div>
+        )}
+
+        {otpError && (
+          <div className="p-3 rounded-xl bg-[#C84B31]/10 border border-[#C84B31] text-sm text-[#A83E28]" data-testid="otp-send-error">
+            {otpError}
           </div>
         )}
 

@@ -166,12 +166,34 @@ def normalize_phone(phone: str) -> str:
         return "+228" + digits
     return "+" + digits if not phone.startswith("+") else phone
 
+
+def _coerce_bool(value: object, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() not in ("0", "false", "no", "off", "")
+    return bool(value)
+
+
+def normalize_openwa_base_url(url: str) -> str:
+    url = (url or "").strip().rstrip("/")
+    if url.endswith("/api"):
+        url = url[:-4].rstrip("/")
+    return url
+
 async def get_platform_config() -> dict:
     s = await db.app_settings.find_one({"_id": "platform"}) or {}
     return {
         "premium_price_fcfa": s.get("premium_price_fcfa", 2000),
         "premium_duration_days": s.get("premium_duration_days", 30),
         "premium_enabled": s.get("premium_enabled", False),
+        "auth_dev_mode": _coerce_bool(
+            s.get("auth_dev_mode"),
+            (os.environ.get("ENV_ENV") or os.environ.get("NODE_ENV") or "prod").strip().lower()
+            in ("dev", "development", "local", "test"),
+        ),
         "public_backend_url": s.get("public_backend_url") or os.environ.get("PUBLIC_BACKEND_URL", ""),
         "whatsapp_service_url": s.get("whatsapp_service_url") or os.environ.get("WHATSAPP_SERVICE_URL", ""),
         "whatsapp_api_key": s.get("whatsapp_api_key") or os.environ.get("WHATSAPP_API_KEY", ""),
@@ -182,15 +204,21 @@ async def get_platform_config() -> dict:
     }
 
 
-def get_email_config() -> dict:
+async def is_auth_dev_mode() -> bool:
+    cfg = await get_platform_config()
+    return bool(cfg["auth_dev_mode"])
+
+
+async def get_email_config() -> dict:
+    s = await db.app_settings.find_one({"_id": "platform"}) or {}
     return {
-        "host": os.environ.get("SMTP_HOST", ""),
-        "port": int(os.environ.get("SMTP_PORT", "587") or 587),
-        "username": os.environ.get("SMTP_USER", ""),
-        "password": os.environ.get("SMTP_PASSWORD", ""),
-        "from_addr": os.environ.get("SMTP_FROM", os.environ.get("SMTP_USER", "")),
-        "use_tls": os.environ.get("SMTP_USE_TLS", "true").lower() not in ("0", "false", "no"),
-        "use_ssl": os.environ.get("SMTP_USE_SSL", "false").lower() in ("1", "true", "yes"),
+        "host": s.get("smtp_host") or os.environ.get("SMTP_HOST", ""),
+        "port": int(s.get("smtp_port") or os.environ.get("SMTP_PORT", "587") or 587),
+        "username": s.get("smtp_user") or os.environ.get("SMTP_USER", ""),
+        "password": s.get("smtp_password") or os.environ.get("SMTP_PASSWORD", ""),
+        "from_addr": s.get("smtp_from") or os.environ.get("SMTP_FROM", os.environ.get("SMTP_USER", "")),
+        "use_tls": _coerce_bool(s.get("smtp_use_tls"), os.environ.get("SMTP_USE_TLS", "true").lower() not in ("0", "false", "no")),
+        "use_ssl": _coerce_bool(s.get("smtp_use_ssl"), os.environ.get("SMTP_USE_SSL", "false").lower() in ("1", "true", "yes")),
     }
 
 async def send_whatsapp(phone: str, text: str) -> bool:
@@ -200,9 +228,7 @@ async def send_whatsapp(phone: str, text: str) -> bool:
     wa_session = cfg["whatsapp_session_id"] or "default"
     if not wa_url or not wa_key:
         return False
-    base = wa_url.rstrip("/")
-    if base.endswith("/api"):
-        base = base[:-4]
+    base = normalize_openwa_base_url(wa_url)
     endpoint = f"{base}/api/sessions/{wa_session}/messages/send-text"
     wa_phone = phone.lstrip("+").replace(" ", "") + "@c.us"
     try:
@@ -220,7 +246,7 @@ async def send_whatsapp(phone: str, text: str) -> bool:
 
 
 async def send_email(recipient: str, subject: str, body: str) -> bool:
-    cfg = get_email_config()
+    cfg = await get_email_config()
     if not cfg["host"] or not cfg["from_addr"] or not recipient:
         return False
 

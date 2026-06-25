@@ -61,8 +61,8 @@ class AuthResponse(BaseModel):
     challenge_id: Optional[str] = None
     methods: List[str] = Field(default_factory=list)
     phone: Optional[str] = None
-    dev_code: Optional[str] = None
     channel: Optional[str] = None
+    dev_otp_code: Optional[str] = None
 
 class ProfileUpdate(BaseModel):
     display_name: Optional[str] = None
@@ -170,6 +170,14 @@ class PlatformSettingsUpdate(BaseModel):
     premium_price_fcfa: Optional[float] = None
     premium_duration_days: Optional[int] = None
     public_backend_url: Optional[str] = None
+    auth_dev_mode: Optional[bool] = None
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_user: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_from: Optional[str] = None
+    smtp_use_tls: Optional[bool] = None
+    smtp_use_ssl: Optional[bool] = None
     whatsapp_service_url: Optional[str] = None
     whatsapp_api_key: Optional[str] = None
     whatsapp_session_id: Optional[str] = None

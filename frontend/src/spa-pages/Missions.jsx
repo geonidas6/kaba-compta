@@ -71,6 +71,9 @@ export default function Missions() {
     // eslint-disable-next-line
   }, [tab, typeFilter]);
 
+  const activeMineItems = tab === "mine" ? items.filter((m) => m.status === "en_travail") : [];
+  const otherMineItems = tab === "mine" ? items.filter((m) => m.status !== "en_travail") : items;
+
   return (
     <div className="space-y-4" data-testid="missions-page">
       <div className="flex items-start justify-between gap-3">
@@ -133,13 +136,33 @@ export default function Missions() {
         </TabsList>
 
         <TabsContent value={tab} className="mt-4 space-y-3">
+          {tab === "mine" && activeMineItems.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h2 className="font-['Manrope'] font-bold text-lg">Missions en cours</h2>
+                <span className="text-xs text-[#6C6C6C]">{activeMineItems.length} en cours</span>
+              </div>
+              {activeMineItems.map((m) => <MissionCard key={m.id} m={m} isMerchant={isMerchant} />)}
+            </div>
+          )}
+
+          {tab === "mine" && otherMineItems.length > 0 && activeMineItems.length > 0 && (
+            <div className="pt-2">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="font-['Manrope'] font-bold text-lg">Autres missions</h2>
+                <span className="text-xs text-[#6C6C6C]">{otherMineItems.length}</span>
+              </div>
+            </div>
+          )}
+
           {items.length === 0 && (
             <div className="card-flat p-8 text-center">
               <Briefcase className="w-10 h-10 text-[#6C6C6C] mx-auto" />
               <div className="mt-3 text-[#6C6C6C]">Aucune mission.</div>
             </div>
           )}
-          {items.map((m) => <MissionCard key={m.id} m={m} isMerchant={isMerchant} />)}
+          {(tab !== "mine" || activeMineItems.length === 0) && otherMineItems.map((m) => <MissionCard key={m.id} m={m} isMerchant={isMerchant} />)}
+          {tab === "mine" && activeMineItems.length > 0 && otherMineItems.map((m) => <MissionCard key={m.id} m={m} isMerchant={isMerchant} />)}
         </TabsContent>
       </Tabs>
     </div>
