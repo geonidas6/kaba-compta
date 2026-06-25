@@ -48,6 +48,10 @@ async def upload_avatar(
 @router.put("/profile", response_model=UserPublic)
 async def update_profile(data: ProfileUpdate, user: dict = Depends(get_current_user)):
     update = {k: v for k, v in data.model_dump().items() if v is not None}
+    email = (update.get("email") or "").strip()
+    if not email:
+        raise HTTPException(status_code=400, detail="L'adresse email est obligatoire")
+    update["email"] = email
     if update:
         if "display_name" in update or "shop_name" in update or not user.get("public_slug"):
             merged = {**user, **update}

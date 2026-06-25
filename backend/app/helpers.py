@@ -200,6 +200,8 @@ async def get_platform_config() -> dict:
         "whatsapp_session_id": s.get("whatsapp_session_id") or os.environ.get("WHATSAPP_SESSION_ID", "default"),
         "whatsapp_verify_ssl": s.get("whatsapp_verify_ssl", True),
         "notifications_enabled": s.get("notifications_enabled", True),
+        "whatsapp_notifications_enabled": s.get("whatsapp_notifications_enabled", True),
+        "email_notifications_enabled": s.get("email_notifications_enabled", True),
         "review_visibility_paywall": s.get("review_visibility_paywall", False),
     }
 
@@ -221,31 +223,8 @@ async def get_email_config() -> dict:
         "use_ssl": _coerce_bool(s.get("smtp_use_ssl"), os.environ.get("SMTP_USE_SSL", "false").lower() in ("1", "true", "yes")),
     }
 
-async def send_whatsapp(phone: str, text: str) -> bool:
-    cfg = await get_platform_config()
-    wa_url = cfg["whatsapp_service_url"]
-    wa_key = cfg["whatsapp_api_key"]
-    wa_session = cfg["whatsapp_session_id"] or "default"
-    if not wa_url or not wa_key:
-        return False
-    base = normalize_openwa_base_url(wa_url)
-    endpoint = f"{base}/api/sessions/{wa_session}/messages/send-text"
-    wa_phone = phone.lstrip("+").replace(" ", "") + "@c.us"
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=10.0, verify=cfg["whatsapp_verify_ssl"]) as hc:
-            r = await hc.post(
-                endpoint,
-                headers={"X-API-Key": wa_key, "Content-Type": "application/json"},
-                json={"chatId": wa_phone, "text": text},
-            )
-            return 200 <= r.status_code < 300
-    except Exception as e:
-        logger.warning(f"send_whatsapp failed for {phone}: {e}")
-        return False
 
-
-async def send_email(recipient: str, subject: str, body: str) -> bool:
+async def send_email_raw(recipient: str, subject: str, body: str) -> bool:
     cfg = await get_email_config()
     if not cfg["host"] or not cfg["from_addr"] or not recipient:
         return False
@@ -279,8 +258,40 @@ async def send_email(recipient: str, subject: str, body: str) -> bool:
     try:
         return await asyncio.to_thread(_send)
     except Exception as e:
-        logger.warning(f"send_email failed for {recipient}: {e}")
+        logger.warning(f"send_email_raw failed for {recipient}: {e}")
         return False
+
+async def send_whatsapp(phone: str, text: str) -> bool:
+    cfg = await get_platform_config()
+    if not cfg["notifications_enabled"] or not cfg["whatsapp_notifications_enabled"]:
+        return False
+    wa_url = cfg["whatsapp_service_url"]
+    wa_key = cfg["whatsapp_api_key"]
+    wa_session = cfg["whatsapp_session_id"] or "default"
+    if not wa_url or not wa_key:
+        return False
+    base = normalize_openwa_base_url(wa_url)
+    endpoint = f"{base}/api/sessions/{wa_session}/messages/send-text"
+    wa_phone = phone.lstrip("+").replace(" ", "") + "@c.us"
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10.0, verify=cfg["whatsapp_verify_ssl"]) as hc:
+            r = await hc.post(
+                endpoint,
+                headers={"X-API-Key": wa_key, "Content-Type": "application/json"},
+                json={"chatId": wa_phone, "text": text},
+            )
+            return 200 <= r.status_code < 300
+    except Exception as e:
+        logger.warning(f"send_whatsapp failed for {phone}: {e}")
+        return False
+
+
+async def send_email(recipient: str, subject: str, body: str) -> bool:
+    platform = await get_platform_config()
+    if not platform["notifications_enabled"] or not platform["email_notifications_enabled"]:
+        return False
+    return await send_email_raw(recipient, subject, body)
 
 
 async def send_email_to_user(user_id: str, subject: str, body: str) -> bool:
@@ -289,6 +300,26 @@ async def send_email_to_user(user_id: str, subject: str, body: str) -> bool:
         return False
     return await send_email(user["email"], subject, body)
 
+
+async def _send_user_notification_channels(
+    user_id: str,
+    *,
+    subject: str,
+    body: str,
+    whatsapp_text: Optional[str] = None,
+) -> dict[str, bool]:
+    cfg = await get_platform_config()
+    if not cfg["notifications_enabled"]:
+        return {"whatsapp": False, "email": False}
+
+    user = await db.users.find_one({"id": user_id}, {"_id": 0, "phone": 1, "email": 1})
+    results = {"whatsapp": False, "email": False}
+    if cfg["whatsapp_notifications_enabled"] and user and user.get("phone") and whatsapp_text:
+        results["whatsapp"] = await send_whatsapp(user["phone"], whatsapp_text)
+    if cfg["email_notifications_enabled"] and user and user.get("email"):
+        results["email"] = await send_email(user["email"], subject, body)
+    return results
+
 def notify_async(phone: str, text: str) -> None:
     try:
         asyncio.create_task(send_whatsapp(phone, text))
@@ -296,12 +327,12 @@ def notify_async(phone: str, text: str) -> None:
         logger.warning(f"notify_async scheduling failed: {e}")
 
 async def notify_user(user_id: str, text: str) -> None:
-    cfg = await get_platform_config()
-    if not cfg["notifications_enabled"]:
-        return
-    u = await db.users.find_one({"id": user_id}, {"_id": 0, "phone": 1})
-    if u and u.get("phone"):
-        notify_async(u["phone"], text)
+    await _send_user_notification_channels(
+        user_id,
+        subject="Notification Kaba-Compta",
+        body=text,
+        whatsapp_text=text,
+    )
 
 
 async def notify_user_channels(
@@ -332,11 +363,14 @@ async def notify_user_channels(
     )
     if not notif:
         return notif
-    if whatsapp_text:
-        await notify_user(user_id, whatsapp_text)
     rendered_title = notif.get("title") if notif else title
     rendered_body = notif.get("body") if notif else body
-    await send_email_to_user(user_id, email_subject or rendered_title, email_body or rendered_body)
+    await _send_user_notification_channels(
+        user_id,
+        subject=email_subject or rendered_title,
+        body=email_body or rendered_body,
+        whatsapp_text=whatsapp_text or rendered_body,
+    )
     return notif
 
 
@@ -371,11 +405,14 @@ async def notify_admins_channels(
         )
         if not notif:
             continue
-        if whatsapp_text:
-            await notify_user(admin["id"], whatsapp_text)
         rendered_title = notif.get("title") if notif else title
         rendered_body = notif.get("body") if notif else body
-        await send_email_to_user(admin["id"], email_subject or rendered_title, email_body or rendered_body)
+        await _send_user_notification_channels(
+            admin["id"],
+            subject=email_subject or rendered_title,
+            body=email_body or rendered_body,
+            whatsapp_text=whatsapp_text or rendered_body,
+        )
         sent += 1
     return sent
 

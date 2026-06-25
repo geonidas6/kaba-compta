@@ -16,7 +16,7 @@ from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from fastapi.responses import StreamingResponse, FileResponse
 
 from app.database import db
-from app.models import AdminUserUpdate, PlatformSettingsUpdate, BroadcastRequest, WhatsAppTestRequest, NotificationTemplateUpdate
+from app.models import AdminUserUpdate, PlatformSettingsUpdate, BroadcastRequest, WhatsAppTestRequest, EmailTestRequest, NotificationTemplateUpdate
 from app.config import JWT_SECRET, JWT_ALGORITHM, logger
 from app.helpers import (
     require_admin,
@@ -31,6 +31,7 @@ from app.helpers import (
     ensure_unique_mission_slug,
     notify_user_channels,
     normalize_openwa_base_url,
+    send_email_raw,
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -423,6 +424,8 @@ async def admin_settings_get(_: dict = Depends(require_admin)):
             "whatsapp_api_key_masked": mask_secret(platform.get("whatsapp_api_key") or os.environ.get("WHATSAPP_API_KEY", "")),
             "whatsapp_verify_ssl": platform.get("whatsapp_verify_ssl", True),
             "notifications_enabled": platform.get("notifications_enabled", True),
+            "whatsapp_notifications_enabled": platform.get("whatsapp_notifications_enabled", True),
+            "email_notifications_enabled": platform.get("email_notifications_enabled", True),
             "cronicle_url": platform.get("cronicle_url", os.environ.get("CRONICLE_URL", "")),
             "cronicle_api_key_set": bool(platform.get("cronicle_api_key") or os.environ.get("CRONICLE_API_KEY", "")),
             "cronicle_api_key_masked": mask_secret(platform.get("cronicle_api_key") or os.environ.get("CRONICLE_API_KEY", "")),
@@ -807,6 +810,46 @@ async def admin_whatsapp_test(data: WhatsAppTestRequest, _: dict = Depends(requi
             "error": str(e),
             "endpoint": endpoint,
             "phone_sent_to": wa_phone,
+            "sent": sent_request,
+        }
+
+
+@router.post("/email/test")
+async def admin_email_test(data: EmailTestRequest, _: dict = Depends(require_admin)):
+    cfg = await get_platform_config()
+    subject = (data.subject or "✅ Test Kaba-Compta : configuration email").strip()
+    body = (data.message or f"Votre configuration email Kaba-Compta fonctionne. Test envoyé le {now_iso()}.").strip()
+    email = data.email.strip()
+    if not email:
+        raise HTTPException(status_code=400, detail="Adresse email requise")
+    sent_request = {
+        "method": "POST",
+        "recipient": email,
+        "subject": subject,
+        "body": body,
+        "smtp": {
+            "host": cfg.get("smtp_host", ""),
+            "port": cfg.get("smtp_port", 587),
+            "username": cfg.get("smtp_user", ""),
+            "from_addr": cfg.get("smtp_from", ""),
+            "use_tls": cfg.get("smtp_use_tls", True),
+            "use_ssl": cfg.get("smtp_use_ssl", False),
+        },
+    }
+    try:
+        ok = await send_email_raw(email, subject, body)
+        return {
+            "ok": ok,
+            "recipient": email,
+            "subject": subject,
+            "message": body,
+            "sent": sent_request,
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "recipient": email,
             "sent": sent_request,
         }
 

@@ -20,6 +20,7 @@ export default function AdminProfile() {
   const { user, refresh } = useAuth();
   const [profile, setProfile] = useState({
     display_name: user?.display_name || "",
+    email: user?.email || "",
     city: user?.city || "",
     bio: user?.bio || "",
   });
@@ -33,7 +34,7 @@ export default function AdminProfile() {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.put("/profile", profile);
+      await api.put("/profile", { ...profile, email: profile.email?.trim() });
       await refresh();
       toast.success("Profil admin mis à jour");
     } catch (err) {
@@ -125,21 +126,25 @@ export default function AdminProfile() {
         </h1>
       </div>
 
-      <form onSubmit={saveProfile} className="card-flat p-5 space-y-4">
-        <h2 className="font-['Manrope'] font-bold text-xl">Informations du compte</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <Label>Nom affiché</Label>
-            <Input value={profile.display_name} onChange={(e) => setProfile({ ...profile, display_name: e.target.value })} className="h-11" />
-          </div>
-          <div>
-            <Label>Téléphone</Label>
-            <Input value={user?.phone || ""} disabled className="h-11 bg-[#FAF8F5]" />
-          </div>
-          <div>
-            <Label>Ville</Label>
-            <Input value={profile.city} onChange={(e) => setProfile({ ...profile, city: e.target.value })} className="h-11" />
-          </div>
+    <form onSubmit={saveProfile} className="card-flat p-5 space-y-4">
+      <h2 className="font-['Manrope'] font-bold text-xl">Informations du compte</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <Label>Nom affiché</Label>
+          <Input value={profile.display_name} onChange={(e) => setProfile({ ...profile, display_name: e.target.value })} className="h-11" />
+        </div>
+        <div>
+          <Label>Adresse email <span className="text-[#C84B31]">*</span></Label>
+          <Input value={profile.email || ""} onChange={(e) => setProfile({ ...profile, email: e.target.value })} className="h-11" type="email" required />
+        </div>
+        <div>
+          <Label>Téléphone</Label>
+          <Input value={user?.phone || ""} disabled className="h-11 bg-[#FAF8F5]" />
+        </div>
+        <div>
+          <Label>Ville</Label>
+          <Input value={profile.city} onChange={(e) => setProfile({ ...profile, city: e.target.value })} className="h-11" />
+        </div>
           <div>
             <Label>Rôle</Label>
             <Input value="Administrateur" disabled className="h-11 bg-[#FAF8F5]" />

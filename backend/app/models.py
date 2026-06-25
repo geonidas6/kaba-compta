@@ -9,7 +9,7 @@ class RegisterRequest(BaseModel):
     password: str
     role: Role
     display_name: str
-    email: Optional[str] = None
+    email: str
     shop_name: Optional[str] = None
     city: Optional[str] = "Lomé"
 
@@ -69,7 +69,7 @@ class ProfileUpdate(BaseModel):
     shop_name: Optional[str] = None
     city: Optional[str] = None
     bio: Optional[str] = None
-    email: Optional[str] = None
+    email: str
     avatar_url: Optional[str] = None
     education_level: Optional[str] = None
     skills: Optional[List[str]] = None
@@ -183,6 +183,8 @@ class PlatformSettingsUpdate(BaseModel):
     whatsapp_session_id: Optional[str] = None
     whatsapp_verify_ssl: Optional[bool] = None
     notifications_enabled: Optional[bool] = None
+    whatsapp_notifications_enabled: Optional[bool] = None
+    email_notifications_enabled: Optional[bool] = None
     review_visibility_paywall: Optional[bool] = None
     cronicle_url: Optional[str] = None
     cronicle_api_key: Optional[str] = None
@@ -194,6 +196,12 @@ class BroadcastRequest(BaseModel):
 
 class WhatsAppTestRequest(BaseModel):
     phone: str
+    message: Optional[str] = None
+
+
+class EmailTestRequest(BaseModel):
+    email: str
+    subject: Optional[str] = None
     message: Optional[str] = None
 
 class NotificationTemplateUpdate(BaseModel):

@@ -126,6 +126,9 @@ async def _create_login_challenge(user: dict, methods: list[str]) -> dict:
 async def register(data: RegisterRequest):
     if data.role == "admin":
         raise HTTPException(status_code=400, detail="Rôle non autorisé")
+    email = (data.email or "").strip()
+    if not email:
+        raise HTTPException(status_code=400, detail="L'adresse email est obligatoire")
     phone = normalize_phone(data.phone)
     existing = await db.users.find_one({"phone": phone})
     if existing:
@@ -137,7 +140,7 @@ async def register(data: RegisterRequest):
         "password_hash": hash_password(data.password),
         "role": data.role,
         "display_name": data.display_name,
-        "email": data.email,
+        "email": email,
         "shop_name": data.shop_name,
         "city": data.city or "Lomé",
         "avatar_url": None,

@@ -28,6 +28,8 @@ export default function AdminSettings() {
     whatsapp_session_id: "default",
     whatsapp_verify_ssl: true,
     notifications_enabled: true,
+    whatsapp_notifications_enabled: true,
+    email_notifications_enabled: true,
     cronicle_url: "",
     cronicle_api_key: "",
   });
@@ -38,6 +40,9 @@ export default function AdminSettings() {
   const [waTestPhone, setWaTestPhone] = useState("");
   const [waTesting, setWaTesting] = useState(false);
   const [waResult, setWaResult] = useState(null);
+  const [emailTestRecipient, setEmailTestRecipient] = useState("");
+  const [emailTesting, setEmailTesting] = useState(false);
+  const [emailResult, setEmailResult] = useState(null);
 
   // Backup & Dev Tools State
   const [backups, setBackups] = useState([]);
@@ -223,6 +228,8 @@ export default function AdminSettings() {
       whatsapp_session_id: r.data.platform.whatsapp_session_id || "default",
       whatsapp_verify_ssl: r.data.platform.whatsapp_verify_ssl ?? true,
       notifications_enabled: r.data.platform.notifications_enabled ?? true,
+      whatsapp_notifications_enabled: r.data.platform.whatsapp_notifications_enabled ?? true,
+      email_notifications_enabled: r.data.platform.email_notifications_enabled ?? true,
       cronicle_url: r.data.platform.cronicle_url || "",
       cronicle_api_key: "",
     };
@@ -265,6 +272,8 @@ export default function AdminSettings() {
         whatsapp_session_id: pf.whatsapp_session_id.trim() || "default",
         whatsapp_verify_ssl: pf.whatsapp_verify_ssl,
         notifications_enabled: pf.notifications_enabled,
+        whatsapp_notifications_enabled: pf.whatsapp_notifications_enabled,
+        email_notifications_enabled: pf.email_notifications_enabled,
         cronicle_url: cronicleUrl,
       };
       if (pf.premium_price_fcfa !== "") payload.premium_price_fcfa = parseFloat(pf.premium_price_fcfa);
@@ -352,6 +361,37 @@ export default function AdminSettings() {
       toast.error(message);
     } finally {
       setWaTesting(false);
+    }
+  };
+
+  const testEmail = async () => {
+    if (!emailTestRecipient) return toast.error("Entrez une adresse email");
+    if (!pf.smtp_host) {
+      return toast.error("Corrigez et enregistrez la configuration SMTP avant le test");
+    }
+    setEmailTesting(true);
+    setEmailResult(null);
+    try {
+      const r = await api.post("/admin/email/test", { email: emailTestRecipient });
+      setEmailResult(r.data);
+      if (r.data.ok) toast.success("Email de test envoyé !");
+      else toast.error("Échec de l'envoi email");
+    } catch (err) {
+      const detail = err?.response?.data;
+      const message = detail?.detail || err?.message || "Erreur";
+      setEmailResult({
+        ok: false,
+        error: message,
+        recipient: emailTestRecipient,
+        api_response: {
+          status_code: err?.response?.status || null,
+          json: detail || null,
+          text: typeof detail === "string" ? detail : message,
+        },
+      });
+      toast.error(message);
+    } finally {
+      setEmailTesting(false);
     }
   };
 
@@ -445,22 +485,56 @@ export default function AdminSettings() {
         <div className="border-t border-[#EAE5D9] pt-5 space-y-3">
           <div className="flex items-center gap-2">
             <MessageCircle className="w-5 h-5 text-[#1F4E3D]" />
-            <h2 className="font-['Manrope'] font-bold text-lg">Notifications WhatsApp</h2>
+            <h2 className="font-['Manrope'] font-bold text-lg">Canaux de notification</h2>
           </div>
-          <div className="flex items-start gap-3 p-4 rounded-xl bg-[#FAF8F5] border border-[#EAE5D9]">
-            <Switch
-              checked={pf.notifications_enabled}
-              onCheckedChange={(v) => setPf({ ...pf, notifications_enabled: v })}
-              data-testid="notifications-switch"
-              className="mt-1"
-            />
-            <div className="flex-1">
-              <div className="font-['Manrope'] font-bold">
-                {pf.notifications_enabled ? "Notifications actives" : "Notifications désactivées"}
+          <div className="space-y-3">
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-[#FAF8F5] border border-[#EAE5D9]">
+              <Switch
+                checked={pf.notifications_enabled}
+                onCheckedChange={(v) => setPf({ ...pf, notifications_enabled: v })}
+                data-testid="notifications-switch"
+                className="mt-1"
+              />
+              <div className="flex-1">
+                <div className="font-['Manrope'] font-bold">
+                  {pf.notifications_enabled ? "Notifications globales actives" : "Notifications globales désactivées"}
+                </div>
+                <p className="text-xs text-[#6C6C6C] mt-1">
+                  Coupe ou réactive tous les envois automatiques de la plateforme.
+                </p>
               </div>
-              <p className="text-xs text-[#6C6C6C] mt-1">
-                Envois automatiques sur événements (nouvelle offre, message, mission attribuée, etc.).
-              </p>
+            </div>
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-[#FAF8F5] border border-[#EAE5D9]">
+              <Switch
+                checked={pf.whatsapp_notifications_enabled}
+                onCheckedChange={(v) => setPf({ ...pf, whatsapp_notifications_enabled: v })}
+                data-testid="whatsapp-notifications-switch"
+                className="mt-1"
+              />
+              <div className="flex-1">
+                <div className="font-['Manrope'] font-bold">
+                  {pf.whatsapp_notifications_enabled ? "WhatsApp activé" : "WhatsApp désactivé"}
+                </div>
+                <p className="text-xs text-[#6C6C6C] mt-1">
+                  Les notifications partiront aussi sur WhatsApp pour les utilisateurs avec numéro enregistré.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-[#FAF8F5] border border-[#EAE5D9]">
+              <Switch
+                checked={pf.email_notifications_enabled}
+                onCheckedChange={(v) => setPf({ ...pf, email_notifications_enabled: v })}
+                data-testid="email-notifications-switch"
+                className="mt-1"
+              />
+              <div className="flex-1">
+                <div className="font-['Manrope'] font-bold">
+                  {pf.email_notifications_enabled ? "Email activé" : "Email désactivé"}
+                </div>
+                <p className="text-xs text-[#6C6C6C] mt-1">
+                  Les notifications partiront aussi par email pour les utilisateurs avec adresse renseignée.
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -560,6 +634,57 @@ export default function AdminSettings() {
             {s.platform.smtp_host_set ? "SMTP configuré" : "Aucune configuration SMTP enregistrée"}
             {s.platform.smtp_user_set ? " • utilisateur défini" : ""}
             {s.platform.smtp_from_set ? " • from défini" : ""}
+          </div>
+
+          <div className="mt-4 p-4 rounded-lg bg-[#1F4E3D]/5 border border-[#1F4E3D]/20">
+            <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+              <div className="font-['Manrope'] font-bold text-sm">Tester l'envoi d'email</div>
+              {(!pf.smtp_host || !pf.smtp_from) && (
+                <span className="text-xs text-[#C84B31] font-semibold">Enregistrez l'hôte SMTP et l'adresse FROM avant le test</span>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                data-testid="email-test-recipient-input"
+                value={emailTestRecipient}
+                onChange={(e) => setEmailTestRecipient(e.target.value)}
+                placeholder="destinataire@exemple.com"
+                className="h-10 flex-1 min-w-[220px]"
+              />
+              <Button
+                type="button"
+                onClick={testEmail}
+                disabled={emailTesting}
+                data-testid="email-test-btn"
+                className="bg-[#1F4E3D] hover:bg-[#163328] text-white rounded-full h-10"
+              >
+                <Send className="w-4 h-4 mr-1" /> {emailTesting ? "Envoi..." : "Envoyer test"}
+              </Button>
+            </div>
+            {emailResult && (
+              <div
+                data-testid="email-test-result"
+                className={`mt-3 rounded border overflow-hidden ${emailResult.ok ? "bg-[#1F4E3D]/10 border-[#1F4E3D]/30" : "bg-[#C84B31]/10 border-[#C84B31]/30"}`}
+              >
+                <div className={`px-3 py-2 text-xs font-bold border-b ${emailResult.ok ? "border-[#1F4E3D]/20 text-[#1F4E3D]" : "border-[#C84B31]/20 text-[#C84B31]"}`}>
+                  {emailResult.ok ? "Test envoyé" : "Échec du test"}
+                </div>
+                <div className="grid md:grid-cols-2 gap-0">
+                  <div className="p-3 border-b md:border-b-0 md:border-r border-black/10">
+                    <div className="font-['Manrope'] font-bold text-xs mb-2 text-[#2E2E2E]">Email testé</div>
+                    <pre className="text-xs p-2 rounded bg-white/80 border border-black/10 max-h-64 overflow-auto text-[#2E2E2E]">
+                      {prettyJson(emailResult.sent || { recipient: emailResult.recipient, subject: emailResult.subject })}
+                    </pre>
+                  </div>
+                  <div className="p-3">
+                    <div className="font-['Manrope'] font-bold text-xs mb-2 text-[#2E2E2E]">Réponse</div>
+                    <pre className="text-xs p-2 rounded bg-white/80 border border-black/10 max-h-64 overflow-auto text-[#2E2E2E]">
+                      {prettyJson(emailResult.api_response || { error: emailResult.error })}
+                    </pre>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

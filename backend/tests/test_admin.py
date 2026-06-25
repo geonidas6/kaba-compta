@@ -51,6 +51,7 @@ def merchant():
     r = _post("/auth/register", json={
         "phone": phone, "password": "TestPass123!", "role": "merchant",
         "display_name": f"TEST Merchant {TAG}", "shop_name": f"TEST Shop {TAG}",
+        "email": f"merchant-{TAG}@example.com",
     })
     assert r.status_code == 200, r.text
     d = r.json()
@@ -63,6 +64,7 @@ def assistant():
     r = _post("/auth/register", json={
         "phone": phone, "password": "TestPass123!", "role": "assistant",
         "display_name": f"TEST Assistant {TAG}",
+        "email": f"assistant-{TAG}@example.com",
     })
     assert r.status_code == 200, r.text
     d = r.json()
@@ -78,6 +80,7 @@ class TestAdminAuth:
         r = _post("/auth/register", json={
             "phone": f"9{TAG}99", "password": "Pwd12345", "role": "admin",
             "display_name": "Hacker",
+            "email": f"hacker-{TAG}@example.com",
         })
         assert r.status_code == 400, r.text
 

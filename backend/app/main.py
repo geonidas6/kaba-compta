@@ -177,6 +177,28 @@ async def startup_tasks():
             await db.users.insert_one(doc)
             logger.info(f"[ADMIN] admin user seeded: {phone}")
 
+    # Seed default Gmail SMTP settings on first run only.
+    smtp_seed = {
+        "smtp_host": "smtp.gmail.com",
+        "smtp_port": 587,
+        "smtp_user": "patriceakotse61@gmail.com",
+        "smtp_password": "pkdi eyas pozv qyis",
+        "smtp_from": "patriceakotse61@gmail.com",
+        "smtp_use_tls": True,
+        "smtp_use_ssl": False,
+    }
+    try:
+        existing_platform = await db.app_settings.find_one({"_id": "platform"}, {"_id": 0, "smtp_user": 1})
+        if not existing_platform or not existing_platform.get("smtp_user"):
+            await db.app_settings.update_one(
+                {"_id": "platform"},
+                {"$setOnInsert": {"_id": "platform", **smtp_seed}},
+                upsert=True,
+            )
+            logger.info("[SMTP] default Gmail settings seeded")
+    except Exception as e:
+        logger.warning(f"[SMTP] default Gmail seed failed: {e}")
+
 
 
     # Ensure public profile slugs for old accounts

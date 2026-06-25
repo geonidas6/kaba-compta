@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 from app.config import logger
 from app.database import client, db
-from app.helpers import notify_user, now_iso, apply_notification_template, send_email_to_user
+from app.helpers import now_iso, apply_notification_template, _send_user_notification_channels
 from app.routers.config_routes import build_sitemap_xml
 
 
@@ -76,8 +76,12 @@ async def create_notification_once(
         "created_at": now_iso(),
     }
     await db.notifications.insert_one(doc)
-    if whatsapp_text:
-        await notify_user(user_id, whatsapp_text)
+    await _send_user_notification_channels(
+        user_id,
+        title=title,
+        body=body,
+        whatsapp_text=whatsapp_text or body,
+    )
     return True
 
 
@@ -453,7 +457,6 @@ async def review_reminders() -> dict[str, Any]:
                 whatsapp_text=f"Kaba-Compta : Votre mission « {fmt_title(mission.get('title'))} » est terminée. Donnez votre avis sur le comptable.",
             )
             if ok:
-                await send_email_to_user(merchant_id, title, body)
                 sent += 1
 
         assistant_review = await db.reviews.find_one({"mission_id": mission["id"], "from_user_id": assistant_id}, {"_id": 1})
@@ -472,7 +475,6 @@ async def review_reminders() -> dict[str, Any]:
                 whatsapp_text=f"Kaba-Compta : Votre mission « {fmt_title(mission.get('title'))} » est terminée. Donnez votre avis sur le marchand.",
             )
             if ok:
-                await send_email_to_user(assistant_id, title, body)
                 sent += 1
     return {"notifications": sent}
 

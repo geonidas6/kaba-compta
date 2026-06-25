@@ -274,7 +274,7 @@ function RegisterForm({ initialRole, onDone }) {
         role,
         display_name: displayName,
         shop_name: role === "merchant" ? shopName : null,
-        email: email || null,
+        email,
         city,
       });
       const otpRes = await api.post("/auth/otp/send", { phone });
@@ -431,7 +431,7 @@ function RegisterForm({ initialRole, onDone }) {
 
 
       <div className="space-y-1.5">
-        <Label htmlFor="email-reg">Adresse email</Label>
+        <Label htmlFor="email-reg">Adresse email <span className="text-[#C84B31]">*</span></Label>
         <Input
           id="email-reg"
           data-testid="register-email-input"
@@ -440,6 +440,7 @@ function RegisterForm({ initialRole, onDone }) {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className="h-12"
+          required
         />
       </div>
 

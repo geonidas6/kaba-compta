@@ -230,6 +230,7 @@ export default function Profile() {
     try {
       await api.put("/profile", {
         ...form,
+        email: form.email?.trim(),
         skills: splitList(form.skills),
         languages: form.languages.filter((lang) => lang.name?.trim()).map((lang) => ({ name: lang.name.trim(), level: lang.level || "Intermédiaire" })),
       });
@@ -347,8 +348,8 @@ export default function Profile() {
             </div>
 
             <div>
-              <Label>Adresse email</Label>
-              <Input value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} className="h-11" type="email" data-testid="profile-email-input" placeholder="vous@exemple.com" />
+              <Label>Adresse email <span className="text-[#C84B31]">*</span></Label>
+              <Input value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} className="h-11" type="email" data-testid="profile-email-input" placeholder="vous@exemple.com" required />
             </div>
             {user.role === "assistant" && (
               <div>
