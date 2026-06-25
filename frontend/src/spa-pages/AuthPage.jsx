@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Store, GraduationCap, ArrowRight, Phone, Lock, MessageCircle, ShieldCheck, Smartphone } from "lucide-react";
+import { Store, GraduationCap, ArrowRight, Phone, Lock, MessageCircle, ShieldCheck, Smartphone, Eye, EyeOff } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
@@ -52,6 +52,7 @@ export default function AuthPage() {
 function LoginForm() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [challenge, setChallenge] = useState(null);
   const [method, setMethod] = useState("totp");
@@ -211,13 +212,23 @@ function LoginForm() {
         <Label htmlFor="password-login">Mot de passe <span className="text-[#C84B31]">*</span></Label>
         <div className="relative">
           <Lock className="w-4 h-4 absolute left-3 top-3.5 text-[#6C6C6C]" />
+          <button
+            type="button"
+            onClick={() => setShowPassword((v) => !v)}
+            className="absolute right-3 top-3 text-[#6C6C6C] hover:text-[#2D2D2D] transition-colors"
+            aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+            aria-pressed={showPassword}
+            data-testid="login-password-toggle"
+          >
+            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
           <Input
             id="password-login"
             data-testid="login-password-input"
-            type="password"
+            type={showPassword ? "text" : "password"}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="pl-9 h-12"
+            className="pl-9 pr-10 h-12"
             required
           />
         </div>
@@ -240,6 +251,7 @@ function RegisterForm({ initialRole, onDone }) {
   const [role, setRole] = useState(initialRole);
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [shopName, setShopName] = useState("");
   const [email, setEmail] = useState("");
@@ -471,16 +483,29 @@ function RegisterForm({ initialRole, onDone }) {
 
       <div className="space-y-1.5">
         <Label htmlFor="pwd-reg">Mot de passe <span className="text-[#C84B31]">*</span></Label>
-        <Input
-          id="pwd-reg"
-          data-testid="register-password-input"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          minLength={4}
-          className="h-12"
-          required
-        />
+        <div className="relative">
+          <Lock className="w-4 h-4 absolute left-3 top-3.5 text-[#6C6C6C]" />
+          <button
+            type="button"
+            onClick={() => setShowPassword((v) => !v)}
+            className="absolute right-3 top-3 text-[#6C6C6C] hover:text-[#2D2D2D] transition-colors"
+            aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+            aria-pressed={showPassword}
+            data-testid="register-password-toggle"
+          >
+            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
+          <Input
+            id="pwd-reg"
+            data-testid="register-password-input"
+            type={showPassword ? "text" : "password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            minLength={4}
+            className="pl-9 pr-10 h-12"
+            required
+          />
+        </div>
       </div>
 
       <Button
